@@ -1,11 +1,45 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LIFFログインテスト</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; margin: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+  </style>
 </head>
 <body>
-  <h1>LIFFログイン テスト</h1>
-  <p>ここに userId を表示します</p>
+  <div class="card">状態：<span id="status">初期化中…</span></div>
+  <div class="card"><b>userId</b><div class="mono" id="userId">-</div></div>
+  <div class="card"><b>表示名</b><div id="name">-</div></div>
+
+  <script>
+    const LIFF_ID = "2008802899-oJWsorEf"; // ←ここをあなたのLIFF IDに
+
+    async function main(){
+      try{
+        await liff.init({ liffId: LIFF_ID });
+
+        if(!liff.isLoggedIn()){
+          document.getElementById("status").textContent = "ログインします…";
+          liff.login();
+          return;
+        }
+
+        document.getElementById("status").textContent = "ログイン済み";
+        const profile = await liff.getProfile();
+
+        document.getElementById("userId").textContent = profile.userId || "(取れませんでした)";
+        document.getElementById("name").textContent = profile.displayName || "-";
+      }catch(e){
+        document.getElementById("status").textContent = "エラー";
+        document.getElementById("userId").textContent = String(e);
+      }
+    }
+    main();
+  </script>
 </body>
 </html>
