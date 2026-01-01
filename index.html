@@ -1,45 +1,129 @@
-<!DOCTYPE html>
-<html lang="ja">
+<!doctype html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LIFFログインテスト</title>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>出勤確認</title>
   <style>
-    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; margin: 16px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+    body{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;margin:14px}
+    .card{border:1px solid #ddd;border-radius:12px;padding:14px}
+    .title{font-size:18px;font-weight:900;margin-bottom:6px}
+    .muted{color:#666;font-size:12px}
+    .mono{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all}
+    .row{margin:10px 0}
+    input{width:100%;padding:12px;font-size:16px;border-radius:10px;border:1px solid #ccc}
+    button{width:100%;padding:12px;font-size:16px;border-radius:12px;border:none;font-weight:900}
+    .ok{background:#e8fff0;border:1px solid #b8f0cd;padding:10px;border-radius:10px;white-space:pre-wrap}
+    .ng{background:#fff0f0;border:1px solid #f2b5b5;padding:10px;border-radius:10px;white-space:pre-wrap}
+    .btn2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   </style>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-  <div class="card">状態：<span id="status">初期化中…</span></div>
-  <div class="card"><b>userId</b><div class="mono" id="userId">-</div></div>
-  <div class="card"><b>表示名</b><div id="name">-</div></div>
+  <div class="card">
+    <div class="title">出勤確認</div>
+    <div class="muted">初回だけスタッフコードを入力します（次回から不要）</div>
 
-  <script>
-    const LIFF_ID = "2008802899-oJWsorEf"; // ←ここをあなたのLIFF IDに
+    <div class="row">
+      <div class="muted">状態</div>
+      <div id="st" class="mono muted">起動中...</div>
+    </div>
 
-    async function main(){
-      try{
-        await liff.init({ liffId: LIFF_ID });
+    <div class="row">
+      <div class="muted">LINE userId</div>
+      <div id="uid" class="mono muted">未取得</div>
+    </div>
 
-        if(!liff.isLoggedIn()){
-          document.getElementById("status").textContent = "ログインします…";
-          liff.login();
-          return;
-        }
+    <div id="registerArea" style="display:none;">
+      <div class="row muted">初回のみ：スタッフコードを入力してください</div>
+      <input id="staffCode" placeholder="例10090" inputmode="numeric">
+      <div class="row"><button id="btnPreview">OK（名前を確認）</button></div>
 
-        document.getElementById("status").textContent = "ログイン済み";
-        const profile = await liff.getProfile();
+      <div id="confirmBox" style="display:none;">
+        <div class="row muted">あなたはこの方で合っていますか？</div>
+        <div id="who"></div>
+        <div class="btn2">
+          <button id="btnYes">はい！</button>
+          <button id="btnNo">いいえ！</button>
+        </div>
+      </div>
+    </div>
 
-        document.getElementById("userId").textContent = profile.userId || "(取れませんでした)";
-        document.getElementById("name").textContent = profile.displayName || "-";
-      }catch(e){
-        document.getElementById("status").textContent = "エラー";
-        document.getElementById("userId").textContent = String(e);
-      }
+    <div id="workArea" style="display:none;">
+      <div class="row"><button id="btnConfirm">出勤確認する</button></div>
+    </div>
+
+    <div class="row" id="result"></div>
+  </div>
+
+<script>
+const LIFF_ID  = "2008802899-oJWsorEf";
+const LIFF_URL = "https://liff.line.me/2008802899-oJWsorEf";
+
+const uidEl    = document.getElementById("uid");
+const resultEl = document.getElementById("result");
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
+  );
+}
+function showOk(msg){ resultEl.innerHTML = `<div class="ok">${esc(msg)}</div>`; }
+function showNg(msg){ resultEl.innerHTML = `<div class="ng">${esc(msg)}</div>`; }
+
+async function init(){
+  try {
+    uidEl.textContent = "LIFF初期化中…";
+    showOk(
+      "起動情報\n" +
+      "URL: " + location.href + "\n" +
+      "UA: " + navigator.userAgent
+    );
+
+    // liff.init が固まった時に分かるようにタイムアウトを付ける
+    const initPromise = liff.init({ liffId: LIFF_ID });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("liff.init が10秒でタイムアウトしました")), 10000)
+    );
+    await Promise.race([initPromise, timeout]);
+
+    // ここまで来たら init 成功
+    uidEl.textContent = "LIFF OK（ログイン確認中…）";
+
+    // “LINEアプリ内”かチェック
+    if (!liff.isInClient()) {
+      showNg("LINEアプリの中で開いてください。\n（トークでLIFF URLをタップして開く）");
+      return;
     }
-    main();
-  </script>
+
+    // ログインが無ければログインへ（戻り先は LIFF URL に固定）
+    if (!liff.isLoggedIn()) {
+      showOk("LINEログインへ移動します…");
+      liff.login({ redirectUri: LIFF_URL });
+      return;
+    }
+
+    // プロフィール取得
+    uidEl.textContent = "プロフィール取得中…";
+    const profile = await liff.getProfile();
+    const uid = profile?.userId || "";
+
+    if (!uid) {
+      showNg("userIdが取れませんでした。\n（権限/スコープ/profile設定を確認）");
+      return;
+    }
+
+    uidEl.textContent = uid;
+    showOk("OK userId 取得できました\n" + uid);
+
+  } catch (e) {
+    showNg("エラー：\n" + (e?.message || e));
+    uidEl.textContent = "未取得";
+  }
+}
+
+init();
+</script>
+
 </body>
 </html>
