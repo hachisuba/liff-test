@@ -1,129 +1,160 @@
 <!doctype html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>出勤確認</title>
-  <style>
-    body{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;margin:14px}
-    .card{border:1px solid #ddd;border-radius:12px;padding:14px}
-    .title{font-size:18px;font-weight:900;margin-bottom:6px}
-    .muted{color:#666;font-size:12px}
-    .mono{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all}
-    .row{margin:10px 0}
-    input{width:100%;padding:12px;font-size:16px;border-radius:10px;border:1px solid #ccc}
-    button{width:100%;padding:12px;font-size:16px;border-radius:12px;border:none;font-weight:900}
-    .ok{background:#e8fff0;border:1px solid #b8f0cd;padding:10px;border-radius:10px;white-space:pre-wrap}
-    .ng{background:#fff0f0;border:1px solid #f2b5b5;padding:10px;border-radius:10px;white-space:pre-wrap}
-    .btn2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>出勤確認（自動送信テスト）</title>
+
+  <!-- LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <style>
+    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; margin: 14px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .title { font-size: 18px; font-weight: 800; }
+    .sub { font-size: 12px; color: #666; margin-top: 4px; }
+    .ok { background: #e8fff0; border-color: #b7f0c5; }
+    .ng { background: #ffecec; border-color: #f5b5b5; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space: pre-wrap; word-break: break-all; }
+  </style>
 </head>
+
 <body>
   <div class="card">
-    <div class="title">出勤確認</div>
-    <div class="muted">初回だけスタッフコードを入力します（次回から不要）</div>
+    <div class="title">出勤確認（自動送信）</div>
+    <div class="sub">LIFFでログインできたら userId を自動でGASへ送ります</div>
+  </div>
 
-    <div class="row">
-      <div class="muted">状態</div>
-      <div id="st" class="mono muted">起動中...</div>
-    </div>
+  <div id="status" class="card"><b>状態</b><div id="statusText">起動中…</div></div>
 
-    <div class="row">
-      <div class="muted">LINE userId</div>
-      <div id="uid" class="mono muted">未取得</div>
-    </div>
+  <div class="card">
+    <b>userId</b>
+    <div id="userId" class="mono">未取得</div>
+  </div>
 
-    <div id="registerArea" style="display:none;">
-      <div class="row muted">初回のみ：スタッフコードを入力してください</div>
-      <input id="staffCode" placeholder="例10090" inputmode="numeric">
-      <div class="row"><button id="btnPreview">OK（名前を確認）</button></div>
+  <div class="card">
+    <b>表示名</b>
+    <div id="displayName" class="mono">未取得</div>
+  </div>
 
-      <div id="confirmBox" style="display:none;">
-        <div class="row muted">あなたはこの方で合っていますか？</div>
-        <div id="who"></div>
-        <div class="btn2">
-          <button id="btnYes">はい！</button>
-          <button id="btnNo">いいえ！</button>
-        </div>
-      </div>
-    </div>
+  <div id="result" class="card">
+    <b>送信結果</b>
+    <div id="resultText" class="mono">未送信</div>
+  </div>
 
-    <div id="workArea" style="display:none;">
-      <div class="row"><button id="btnConfirm">出勤確認する</button></div>
-    </div>
-
-    <div class="row" id="result"></div>
+  <div class="card">
+    <b>デバッグ</b>
+    <div id="debug" class="mono"></div>
   </div>
 
 <script>
-const LIFF_ID  = "2008802899-oJWsorEf";
-const LIFF_URL = "https://liff.line.me/2008802899-oJWsorEf";
+  // ========= ここだけ変える =========
+  const LIFF_ID = "2008802899-oJWsorEf"; // せなさんのLIFF ID
+  const GAS_ENDPOINT = "ここにGASの /exec URL を貼る"; // 例: https://script.google.com/macros/s/XXXX/exec
+  // ================================
 
-const uidEl    = document.getElementById("uid");
-const resultEl = document.getElementById("result");
+  const $ = (id) => document.getElementById(id);
 
-function esc(s){
-  return String(s).replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
-  );
-}
-function showOk(msg){ resultEl.innerHTML = `<div class="ok">${esc(msg)}</div>`; }
-function showNg(msg){ resultEl.innerHTML = `<div class="ng">${esc(msg)}</div>`; }
-
-async function init(){
-  try {
-    uidEl.textContent = "LIFF初期化中…";
-    showOk(
-      "起動情報\n" +
-      "URL: " + location.href + "\n" +
-      "UA: " + navigator.userAgent
-    );
-
-    // liff.init が固まった時に分かるようにタイムアウトを付ける
-    const initPromise = liff.init({ liffId: LIFF_ID });
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("liff.init が10秒でタイムアウトしました")), 10000)
-    );
-    await Promise.race([initPromise, timeout]);
-
-    // ここまで来たら init 成功
-    uidEl.textContent = "LIFF OK（ログイン確認中…）";
-
-    // “LINEアプリ内”かチェック
-    if (!liff.isInClient()) {
-      showNg("LINEアプリの中で開いてください。\n（トークでLIFF URLをタップして開く）");
-      return;
-    }
-
-    // ログインが無ければログインへ（戻り先は LIFF URL に固定）
-    if (!liff.isLoggedIn()) {
-      showOk("LINEログインへ移動します…");
-      liff.login({ redirectUri: LIFF_URL });
-      return;
-    }
-
-    // プロフィール取得
-    uidEl.textContent = "プロフィール取得中…";
-    const profile = await liff.getProfile();
-    const uid = profile?.userId || "";
-
-    if (!uid) {
-      showNg("userIdが取れませんでした。\n（権限/スコープ/profile設定を確認）");
-      return;
-    }
-
-    uidEl.textContent = uid;
-    showOk("OK userId 取得できました\n" + uid);
-
-  } catch (e) {
-    showNg("エラー：\n" + (e?.message || e));
-    uidEl.textContent = "未取得";
+  function setStatus(text, ok=true) {
+    $("statusText").textContent = text;
+    $("status").className = "card " + (ok ? "ok" : "ng");
   }
-}
 
-init();
+  function logDebug(obj) {
+    const t = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    $("debug").textContent += (t + "\n");
+  }
+
+  async function postToGas(payload) {
+    const res = await fetch(GAS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const txt = await res.text();
+    let json = null;
+    try { json = JSON.parse(txt); } catch (_) {}
+    return { status: res.status, text: txt, json };
+  }
+
+  async function main() {
+    // 0) 最低限チェック
+    if (!GAS_ENDPOINT || GAS_ENDPOINT.includes("ここにGAS")) {
+      setStatus("エラー：GAS_ENDPOINT が未設定です（index.html に貼ってね）", false);
+      return;
+    }
+
+    // 1) 起動情報
+    logDebug("起動URL: " + location.href);
+    logDebug("UA: " + navigator.userAgent);
+
+    try {
+      setStatus("LIFF 初期化中…");
+
+      // 2) init（タイムアウトが怖いので明示で10秒）
+      const initPromise = liff.init({ liffId: LIFF_ID });
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error("liff.init が10秒でタイムアウトしました")), 10000));
+      await Promise.race([initPromise, timeoutPromise]);
+
+      // 3) ログインしてなければログインへ
+      if (!liff.isLoggedIn()) {
+        setStatus("未ログイン → ログイン画面へ…");
+        // redirectUri は「今開いてるURL」に固定（余計なズレ防止）
+        liff.login({ redirectUri: location.href });
+        return;
+      }
+
+      setStatus("ログイン済み → プロフィール取得中…");
+
+      // 4) profile（10秒タイムアウト）
+      const profPromise = liff.getProfile();
+      const timeoutPromise2 = new Promise((_, rej) => setTimeout(() => rej(new Error("getProfile が10秒でタイムアウトしました")), 10000));
+      const profile = await Promise.race([profPromise, timeoutPromise2]);
+
+      const userId = profile?.userId || "";
+      const displayName = profile?.displayName || "";
+
+      $("userId").textContent = userId || "（空）";
+      $("displayName").textContent = displayName || "（空）";
+
+      if (!userId) {
+        setStatus("エラー：userId が取れません（Scope=profile を確認）", false);
+        return;
+      }
+
+      setStatus("GASへ送信中…");
+
+      // 5) GASへ自動送信
+      const payload = {
+        userId,
+        displayName,
+        ua: navigator.userAgent,
+        liffUrl: location.href,
+      };
+
+      logDebug({ payload });
+
+      const r = await postToGas(payload);
+
+      $("resultText").textContent = r.json ? JSON.stringify(r.json, null, 2) : r.text;
+
+      if (r.json && r.json.ok) {
+        $("result").className = "card ok";
+        setStatus("完了：スプレッドシートに保存しました ✅");
+      } else {
+        $("result").className = "card ng";
+        setStatus("エラー：GASがOKを返していません（結果を見てね）", false);
+      }
+
+    } catch (err) {
+      $("result").className = "card ng";
+      $("resultText").textContent = String(err);
+      setStatus("エラー：" + String(err), false);
+      logDebug("ERROR: " + String(err));
+    }
+  }
+
+  main();
 </script>
-
 </body>
 </html>
