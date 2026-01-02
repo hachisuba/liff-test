@@ -1,115 +1,79 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>出勤確認（自動送信テスト）</title>
-
-  <!-- LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>出勤確認</title>
   <style>
-    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; margin: 14px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-    .title { font-size: 18px; font-weight: 800; }
-    .sub { font-size: 12px; color: #666; margin-top: 4px; }
-    .ok { background: #e8fff0; border-color: #b7f0c5; }
-    .ng { background: #ffecec; border-color: #f5b5b5; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space: pre-wrap; word-break: break-all; }
+    body {
+      font-family: sans-serif;
+      background: #f7f7f7;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      max-width: 400px;
+      margin: auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 20px;
+      text-align: center;
+    }
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 12px;
+      font-size: 16px;
+    }
+    button {
+      background: #06c755;
+      color: white;
+      border: none;
+      border-radius: 8px;
+    }
+    .msg {
+      margin-top: 15px;
+      text-align: center;
+    }
   </style>
 </head>
-
 <body>
   <div class="card">
-    <div class="title">出勤確認（自動送信）</div>
-    <div class="sub">LIFFでログインできたら userId を自動でGASへ送ります</div>
+    <h1>出勤確認</h1>
+
+    <input id="staffCode" placeholder="スタッフコード" />
+    <button onclick="send()">出勤しました</button>
+
+    <div class="msg" id="msg"></div>
   </div>
 
-  <div id="status" class="card"><b>状態</b><div id="statusText">起動中…</div></div>
+  <script>
+    const GAS_URL = "★★ここにGASのURLを入れる★★";
 
-  <div class="card">
-    <b>userId</b>
-    <div id="userId" class="mono">未取得</div>
-  </div>
+    function send() {
+      const staffCode = document.getElementById("staffCode").value;
+      const msg = document.getElementById("msg");
 
-  <div class="card">
-    <b>表示名</b>
-    <div id="displayName" class="mono">未取得</div>
-  </div>
-
-  <div id="result" class="card">
-    <b>送信結果</b>
-    <div id="resultText" class="mono">未送信</div>
-  </div>
-
-  <div class="card">
-    <b>デバッグ</b>
-    <div id="debug" class="mono"></div>
-  </div>
-
-<script>
-  const LIFF_ID = "2008802899-oJWsoEf";  // あなたのLIFF ID
-  const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyt7-ASEC_X62m3rKIo3Nd-f_1zOlQevKDkuLvMEOlg7gDVdVn2LSqiDu7rVzDsvlUrew/exec";
-
-  let currentUserId = "";
-
-  async function init() {
-    try {
-      await liff.init({ liffId: LIFF_ID });
-
-      if (!liff.isLoggedIn()) {
-        liff.login();
+      if (!staffCode) {
+        msg.innerText = "スタッフコードを入れてください";
         return;
       }
 
-      const profile = await liff.getProfile();
-      currentUserId = profile.userId;
-
-      document.getElementById("status").textContent = "LIFFログインOK";
-      document.getElementById("userId").textContent = profile.userId;
-      document.getElementById("name").textContent = profile.displayName;
-
-    } catch (e) {
-      document.getElementById("status").textContent = "エラー: " + (e && e.message ? e.message : e);
-    }
-  }
-
-  async function send() {
-    const staffCode = document.getElementById("staffCode").value.trim();
-    const result = document.getElementById("result");
-
-    if (!currentUserId) {
-      result.textContent = "userIdが取れてません（LIFF初期化が完了してない）";
-      return;
-    }
-    if (!staffCode) {
-      result.textContent = "スタッフコードを入れてね";
-      return;
-    }
-
-    // ★CORS回避のため「フォーム形式」で送る（JSON送信は失敗しがち）
-    const body = new URLSearchParams();
-    body.append("userId", currentUserId);
-    body.append("staffCode", staffCode);
-
-    try {
-      // no-cors にすると返事は読めないけど「送る」ことはできる
-      await fetch(GAS_WEBAPP_URL, {
+      fetch(GAS_URL, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString()
-      });
-
-      result.textContent = "送信しました（記録できているはず）";
-    } catch (e) {
-      result.textContent = "送信エラー: " + (e && e.message ? e.message : e);
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffCode: staffCode,
+          userId: "github"
+        })
+      })
+      .then(r => r.text())
+      .then(t => msg.innerText = t)
+      .catch(() => msg.innerText = "通信エラー");
     }
-  }
-
-  window.onload = init;
-</script>
-<button onclick="send()">送信</button>
-<div id="result"></div>
+  </script>
 </body>
 </html>
