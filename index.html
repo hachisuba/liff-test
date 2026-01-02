@@ -62,18 +62,20 @@
         return;
       }
 
-      fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          staffCode: staffCode,
-          userId: "github"
-        })
-      })
-      .then(r => r.text())
-      .then(t => msg.innerText = t)
-      .catch(() => msg.innerText = "通信エラー");
-    }
+      fetch(const params = new URLSearchParams();
+params.append("userId", userId);
+params.append("staffCode", staffCode);
+params.append("displayName", displayName);
+
+fetch(GAS_URL, {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+  body: params.toString(),
+})
+.then(r => r.text())
+.then(t => { /* 画面に表示 */ })
+.catch(err => { /* 通信エラー */ });
+
   </script>
 </body>
 </html>
