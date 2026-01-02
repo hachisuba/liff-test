@@ -6,52 +6,63 @@
   <title>出勤確認</title>
   <style>
     body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; background:#f7f7f7; padding: 14px; }
-    .card { background:#fff; padding:14px; border-radius:12px; max-width: 760px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+    .card { background:#fff; padding:14px; border-radius:12px; max-width: 900px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
     h1 { margin: 0 0 10px; font-size: 20px; text-align:center; }
     .sub { font-size: 12px; color:#666; text-align:center; margin-bottom: 10px; white-space: pre-wrap; }
     .msg { margin-top: 10px; text-align:center; white-space: pre-wrap; font-size: 14px; }
+
+    .sectionTitle { font-weight: 800; margin: 14px 0 8px; }
+    .formRow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; }
+    .btnBase {
+      padding: 10px 12px; border: none; border-radius: 10px;
+      color:#fff; font-weight: 800; cursor: pointer;
+      width: 100%;
+    }
+    .btnRed { background:#e53935; }
+    .btnGreen { background:#2e7d32; }
+    .btnGray { background:#9e9e9e; cursor:not-allowed; }
+    .btnSmall { padding: 8px 10px; font-size: 13px; }
+
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; font-size: 14px; }
-    th { color:#555; font-weight:700; background:#fafafa; position: sticky; top: 0; }
-    .btn {
-      width: 100%;
-      padding: 10px 12px;
-      border: none;
-      border-radius: 10px;
-      background:#06c755;
-      color:#fff;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .btn:disabled { background:#bbb; cursor:not-allowed; }
+    th { color:#555; font-weight:800; background:#fafafa; position: sticky; top: 0; }
     .pill { display:inline-block; background:#f2f2f2; padding:4px 8px; border-radius:999px; font-size:12px; color:#333; }
     .right { text-align:right; }
+
+    @media (max-width: 680px) {
+      .formRow { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>出勤確認</h1>
     <div class="sub" id="who">読み込み中…</div>
+    <div class="sub"><span class="pill" id="dateLabel"></span></div>
 
-    <div class="sub">
-      <span class="pill" id="dateLabel"></span>
+    <div class="sectionTitle">本日出勤リスト</div>
+    <div id="tableWrap"></div>
+
+    <div class="sectionTitle">臨時（手入力）</div>
+    <div class="sub">※ シフトに無い人を臨時で登録できます（開始日時は送信した時刻）</div>
+    <div class="formRow">
+      <input id="manualStaffCode" placeholder="スタッフコード（例：10277）" inputmode="numeric" />
+      <select id="manualStore">
+        <option value="">店名を選択</option>
+      </select>
+      <button class="btnBase btnGreen" id="manualBtn" onclick="manualAdd()">送信</button>
     </div>
 
-    <div id="tableWrap"></div>
     <div class="msg" id="msg"></div>
   </div>
 
-  <!-- LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
   <script>
-    // ★あなたのLIFF ID
     const LIFF_ID = "2008802899-oJWsorEf";
-
-    // ★あなたのGAS（/exec）
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-    // ★まずは固定：2026-01-02 の出勤一覧を表示（後で「今日」に変えられる）
+    // ★まずは固定：2026-01-02（後で「今日」にもできます）
     const DISPLAY_DATE = "2026-01-02";
 
     let lineUserId = "";
@@ -61,6 +72,9 @@
     const msgEl = document.getElementById("msg");
     const tableWrap = document.getElementById("tableWrap");
     const dateLabel = document.getElementById("dateLabel");
+    const manualStaffCodeEl = document.getElementById("manualStaffCode");
+    const manualStoreEl = document.getElementById("manualStore");
+    const manualBtnEl = document.getElementById("manualBtn");
 
     dateLabel.innerText = `表示日：${DISPLAY_DATE}`;
 
@@ -68,67 +82,84 @@
       try {
         await liff.init({ liffId: LIFF_ID });
 
-        // LINEアプリ内じゃないとNG
         if (!liff.isInClient()) {
           whoEl.innerText = "LINEアプリ内で開いてください";
           msgEl.innerText = "このページはLINEアプリから開いた時だけ使えます。";
+          disableAll_();
           return;
         }
 
-        // ログイン
         if (!liff.isLoggedIn()) {
           whoEl.innerText = "LINEログインが必要です（自動でログインに進みます）";
           liff.login();
           return;
         }
 
-        // プロフィール
         const profile = await liff.getProfile();
         lineUserId = profile.userId || "";
         lineDisplayName = profile.displayName || "";
         whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
 
-        // 一覧取得
+        await loadStores();
         await loadShiftList();
 
       } catch (err) {
         whoEl.innerText = "LIFFの起動に失敗しました";
         msgEl.innerText = "エラー詳細：\n" + (err && err.message ? err.message : err);
+        disableAll_();
       }
     })();
 
-    async function loadShiftList() {
-      msgEl.innerText = "出勤一覧を取得中…";
+    function disableAll_() {
+      manualBtnEl.classList.remove("btnGreen");
+      manualBtnEl.classList.add("btnGray");
+      manualBtnEl.disabled = true;
+    }
 
+    async function apiPost(paramsObj) {
       const params = new URLSearchParams();
-      params.append("action", "list");
-      params.append("date", DISPLAY_DATE);
+      Object.entries(paramsObj).forEach(([k,v]) => params.append(k, v));
 
       const res = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
         body: params.toString(),
       });
+      return await res.text();
+    }
 
-      const text = await res.text();
-
+    async function loadStores() {
+      const text = await apiPost({ action:"stores" });
       let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
+      try { data = JSON.parse(text); } catch { return; }
+      if (!data.ok) return;
+
+      // プルダウン作り直し
+      manualStoreEl.innerHTML = `<option value="">店名を選択</option>`;
+      (data.items || []).forEach(store => {
+        const opt = document.createElement("option");
+        opt.value = store;
+        opt.textContent = store;
+        manualStoreEl.appendChild(opt);
+      });
+    }
+
+    async function loadShiftList() {
+      msgEl.innerText = "出勤一覧を取得中…";
+
+      const text = await apiPost({ action:"list", date: DISPLAY_DATE });
+      let data;
+      try { data = JSON.parse(text); } catch {
         msgEl.innerText = "一覧の取得に失敗しました。\n" + text;
         return;
       }
-
       if (!data.ok) {
         msgEl.innerText = "一覧の取得に失敗しました。\n" + (data.message || "");
         return;
       }
 
       renderTable(data.items || []);
-      msgEl.innerText = (data.items && data.items.length)
-        ? "一覧を表示しました"
-        : "本日の出勤者がいません";
+      msgEl.innerText = (data.items && data.items.length) ? "一覧を表示しました" : "出勤者がいません";
     }
 
     function renderTable(items) {
@@ -142,7 +173,7 @@
           <thead>
             <tr>
               <th style="width: 28%;">店名</th>
-              <th style="width: 28%;">出勤時間</th>
+              <th style="width: 28%;">開始日時</th>
               <th style="width: 24%;">名前</th>
               <th style="width: 20%;">出勤確認</th>
             </tr>
@@ -151,10 +182,15 @@
       `;
 
       for (const it of items) {
-        const store = escapeHtml(it.store || "");
-        const startAt = escapeHtml(it.startAt || "");
-        const name = escapeHtml(it.name || "");
-        const staffCode = escapeHtml(it.staffCode || "");
+        const store = esc(it.store || "");
+        const startAt = esc(it.startAt || "");
+        const name = esc(it.name || "");
+        const staffCode = esc(it.staffCode || "");
+        const confirmed = !!it.confirmed;
+
+        const btnClass = confirmed ? "btnGreen" : "btnRed";
+        const btnText  = confirmed ? "確認済み" : "出勤確認";
+        const disabled = confirmed ? "disabled" : "";
 
         html += `
           <tr>
@@ -162,8 +198,10 @@
             <td>${startAt}</td>
             <td>${name}</td>
             <td>
-              <button class="btn" onclick="confirmWork('${staffCode}', '${name}')">
-                出勤確認
+              <button class="btnBase btnSmall ${btnClass}"
+                ${disabled}
+                onclick="confirmWork('${staffCode}', '${name}')">
+                ${btnText}
               </button>
             </td>
           </tr>
@@ -174,33 +212,23 @@
       tableWrap.innerHTML = html;
     }
 
-    // ※次ステップで「確認OK」まで完成させる
     async function confirmWork(staffCode, name) {
-      if (!lineUserId) {
-        msgEl.innerText = "LINE情報を取得中です。少し待ってからもう一度。";
-        return;
-      }
+      if (!lineUserId) { msgEl.innerText = "LINE情報取得中です。少し待ってね。"; return; }
       if (!staffCode) {
         msgEl.innerText = `スタッフコードが見つかりません（${name}）\nstaffシートの名前と一致しているか確認してください。`;
         return;
       }
 
-      msgEl.innerText = "送信中…";
+      msgEl.innerText = "確認中…";
 
-      const params = new URLSearchParams();
-      params.append("action", "confirm");
-      params.append("date", DISPLAY_DATE);
-      params.append("staffCode", staffCode);
-      params.append("userId", lineUserId);
-      params.append("displayName", lineDisplayName);
-
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-        body: params.toString(),
+      const text = await apiPost({
+        action: "confirm",
+        date: DISPLAY_DATE,
+        staffCode,
+        userId: lineUserId,
+        displayName: lineDisplayName
       });
 
-      const text = await res.text();
       let data;
       try { data = JSON.parse(text); } catch {
         msgEl.innerText = "送信に失敗しました。\n" + text;
@@ -208,9 +236,58 @@
       }
 
       msgEl.innerText = data.ok ? "確認OK" : ("NG: " + (data.message || "不明なエラー"));
+
+      // 表を再読み込み（色を反映）
+      await loadShiftList();
     }
 
-    function escapeHtml(str) {
+    async function manualAdd() {
+      if (!lineUserId) { msgEl.innerText = "LINE情報取得中です。少し待ってね。"; return; }
+
+      const staffCode = manualStaffCodeEl.value.trim();
+      const store = manualStoreEl.value.trim();
+
+      if (!staffCode) { msgEl.innerText = "スタッフコードを入れてください"; return; }
+      if (!store) { msgEl.innerText = "店名を選んでください"; return; }
+
+      manualBtnEl.disabled = true;
+      manualBtnEl.classList.remove("btnGreen");
+      manualBtnEl.classList.add("btnGray");
+
+      msgEl.innerText = "臨時登録中…";
+
+      const text = await apiPost({
+        action: "manualAdd",
+        date: DISPLAY_DATE,
+        staffCode,
+        store,
+        userId: lineUserId,
+        displayName: lineDisplayName
+      });
+
+      let data;
+      try { data = JSON.parse(text); } catch {
+        msgEl.innerText = "送信に失敗しました。\n" + text;
+        manualBtnEl.disabled = false;
+        manualBtnEl.classList.remove("btnGray");
+        manualBtnEl.classList.add("btnGreen");
+        return;
+      }
+
+      msgEl.innerText = data.ok ? "臨時登録OK" : ("NG: " + (data.message || "不明なエラー"));
+
+      manualBtnEl.disabled = false;
+      manualBtnEl.classList.remove("btnGray");
+      manualBtnEl.classList.add("btnGreen");
+
+      // 入力を軽くリセット
+      manualStaffCodeEl.value = "";
+
+      // 表を再読み込み（臨時が反映される）
+      await loadShiftList();
+    }
+
+    function esc(str) {
       return String(str).replace(/[&<>"']/g, s => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       }[s]));
