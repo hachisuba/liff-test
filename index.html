@@ -5,39 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>出勤確認</title>
   <style>
-    body {
-      font-family: sans-serif;
-      background: #f7f7f7;
-      padding: 20px;
-    }
-    .card {
-      background: #fff;
-      padding: 20px;
-      border-radius: 12px;
-      max-width: 400px;
-      margin: auto;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    h1 {
-      font-size: 20px;
-      text-align: center;
-    }
-    input, button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 12px;
-      font-size: 16px;
-    }
-    button {
-      background: #06c755;
-      color: white;
-      border: none;
-      border-radius: 8px;
-    }
-    .msg {
-      margin-top: 15px;
-      text-align: center;
-    }
+    body { font-family: sans-serif; background: #f7f7f7; padding: 20px; }
+    .card { background: #fff; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    h1 { font-size: 20px; text-align: center; }
+    input, button { width: 100%; padding: 12px; margin-top: 12px; font-size: 16px; }
+    button { background: #06c755; color: white; border: none; border-radius: 8px; }
+    .msg { margin-top: 15px; text-align: center; }
   </style>
 </head>
 <body>
@@ -56,26 +29,22 @@
     function send() {
       const staffCode = document.getElementById("staffCode").value;
       const msg = document.getElementById("msg");
+      if (!staffCode) { msg.innerText = "スタッフコードを入れてください"; return; }
 
-      if (!staffCode) {
-        msg.innerText = "スタッフコードを入れてください";
-        return;
-      }
+      const params = new URLSearchParams();
+      params.append("staffCode", staffCode);
+      params.append("userId", "liff");
+      params.append("displayName", "");
 
-      fetch(const params = new URLSearchParams();
-params.append("userId", userId);
-params.append("staffCode", staffCode);
-params.append("displayName", displayName);
-
-fetch(GAS_URL, {
-  method: "POST",
-  headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-  body: params.toString(),
-})
-.then(r => r.text())
-.then(t => { /* 画面に表示 */ })
-.catch(err => { /* 通信エラー */ });
-
+      fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: params.toString(),
+      })
+      .then(r => r.text())
+      .then(t => msg.innerText = t)
+      .catch(err => msg.innerText = "通信エラー：" + err);
+    }
   </script>
 </body>
 </html>
