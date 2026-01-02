@@ -22,11 +22,13 @@
     .btnSmall { padding: 8px 10px; font-size: 13px; }
 
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; font-size: 14px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; font-size: 14px; vertical-align: top; }
     th { color:#555; font-weight:800; background:#fafafa; position: sticky; top: 0; }
-    .pill { display:inline-block; background:#f2f2f2; padding:4px 8px; border-radius:999px; font-size:12px; color:#333; }
 
-    /* ====== モーダル（ポップアップ） ====== */
+    .pill { display:inline-block; background:#f2f2f2; padding:4px 8px; border-radius:999px; font-size:12px; color:#333; }
+    .tagManual { display:inline-block; background:#ffe5e5; color:#c62828; padding:3px 8px; border-radius:999px; font-size:12px; font-weight:800; margin-left:6px; }
+
+    /* ===== モーダル ===== */
     .overlay {
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.45);
@@ -47,7 +49,6 @@
     .modalTitle { font-weight: 900; font-size: 16px; margin-bottom: 8px; }
     .modalText { font-size: 14px; color:#333; line-height: 1.6; white-space: pre-wrap; }
     .modalRow { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
-    .modalRow2 { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
     .modalMsg { margin-top: 10px; font-size: 13px; color:#d32f2f; white-space: pre-wrap; }
     .modalBtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
     .hide { display:none; }
@@ -65,26 +66,25 @@
     <div class="sub" id="who">読み込み中…</div>
     <div class="sub"><span class="pill" id="dateLabel"></span></div>
 
-    <div class="sectionTitle">本日出勤リスト</div>
+    <div class="sectionTitle">本日出勤リスト（確定のみ）</div>
     <div id="tableWrap"></div>
 
     <div class="sectionTitle">臨時（手入力）</div>
-    <div class="sub">※ これは必要なら「管理者だけ」にできます</div>
+    <div class="sub">※ shiftには書きません。confirmに「臨時」で記録します。</div>
     <div class="formRow">
-      <input id="manualStaffCode" placeholder="スタッフコード（例：10277）" inputmode="numeric" />
+      <input id="manualStaffCode" placeholder="スタッフコード（半角数字）" inputmode="numeric" />
       <select id="manualStore">
         <option value="">店名を選択</option>
       </select>
-      <button class="btnBase btnGreen" id="manualBtn" onclick="manualAdd()">送信</button>
+      <button class="btnBase btnGreen" id="manualBtn" onclick="manualCheck()">確認</button>
     </div>
 
     <div class="msg" id="msg"></div>
   </div>
 
-  <!-- ====== 未登録モーダル ====== -->
-  <div class="overlay" id="overlay">
+  <!-- 初回登録モーダル -->
+  <div class="overlay" id="overlayReg">
     <div class="modal">
-      <!-- STEP1 -->
       <div id="regStep1">
         <div class="modalTitle">あなたはまだ未登録です。</div>
         <div class="modalText">初回だけ、あなたのスタッフコード（半角数字）を入力してください。</div>
@@ -95,7 +95,6 @@
         <div class="modalMsg" id="regMsg1"></div>
       </div>
 
-      <!-- STEP2 -->
       <div id="regStep2" class="hide">
         <div class="modalTitle">確認</div>
         <div class="modalText" id="regConfirmText"></div>
@@ -108,19 +107,38 @@
     </div>
   </div>
 
+  <!-- 臨時確認モーダル -->
+  <div class="overlay" id="overlayManual">
+    <div class="modal">
+      <div class="modalTitle">臨時登録の確認</div>
+      <div class="modalText" id="manualConfirmText"></div>
+      <div class="modalBtns">
+        <button class="btnBase btnGray btnSmall" onclick="manualClose()">戻る</button>
+        <button class="btnBase btnGreen btnSmall" onclick="manualDo()">登録</button>
+      </div>
+      <div class="modalMsg" id="manualMsg"></div>
+    </div>
+  </div>
+
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
     const LIFF_ID = "2008802899-oJWsorEf";
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
+    // ★テスト用固定日（後で「今日」に変更OK）
     const DISPLAY_DATE = "2026-01-02";
 
     let lineUserId = "";
     let lineDisplayName = "";
 
-    // 登録用に保持
+    // 初回登録用
     let regCandidateCode = "";
     let regCandidateName = "";
+
+    // 臨時登録用
+    let manualCandidateCode = "";
+    let manualCandidateName = "";
+    let manualCandidateStore = "";
 
     const whoEl = document.getElementById("who");
     const msgEl = document.getElementById("msg");
@@ -131,14 +149,19 @@
     const manualStoreEl = document.getElementById("manualStore");
     const manualBtnEl = document.getElementById("manualBtn");
 
-    // modal
-    const overlay = document.getElementById("overlay");
+    // 初回登録モーダル
+    const overlayReg = document.getElementById("overlayReg");
     const regStep1 = document.getElementById("regStep1");
     const regStep2 = document.getElementById("regStep2");
     const regStaffCodeEl = document.getElementById("regStaffCode");
     const regMsg1 = document.getElementById("regMsg1");
     const regMsg2 = document.getElementById("regMsg2");
     const regConfirmText = document.getElementById("regConfirmText");
+
+    // 臨時モーダル
+    const overlayManual = document.getElementById("overlayManual");
+    const manualConfirmText = document.getElementById("manualConfirmText");
+    const manualMsg = document.getElementById("manualMsg");
 
     dateLabel.innerText = `表示日：${DISPLAY_DATE}`;
 
@@ -147,11 +170,9 @@
         await liff.init({ liffId: LIFF_ID });
 
         if (!liff.isInClient()) {
-          whoEl.innerText = "LINEアプリ内で開いてください";
-          msgEl.innerText = "このページはLINEアプリから開いた時だけ使えます。";
+          seeOnly("LINEアプリ内で開いてください", "このページはLINEアプリから開いた時だけ使えます。");
           return;
         }
-
         if (!liff.isLoggedIn()) {
           whoEl.innerText = "LINEログインが必要です（自動でログインに進みます）";
           liff.login();
@@ -163,111 +184,25 @@
         lineDisplayName = profile.displayName || "";
         whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
 
-        // ★ 登録済みかチェック（未登録ならモーダル）
-        const meText = await apiPost({ action:"me", userId: lineUserId });
-        let me;
-        try { me = JSON.parse(meText); } catch { me = { ok:false, message: meText }; }
+        // 登録済みチェック
+        const me = await apiJson({ action:"me", userId: lineUserId });
+        if (!me.ok) { msgEl.innerText = "初期チェック失敗\n" + (me.message || ""); return; }
+        if (!me.registered) { openRegisterModal(); return; }
 
-        if (!me.ok) {
-          msgEl.innerText = "初期チェックに失敗しました。\n" + (me.message || "");
-          return;
-        }
-
-        if (!me.registered) {
-          openRegisterModal();
-          return;
-        }
-
-        // 登録済みなら通常表示へ
         await loadStores();
         await loadShiftList();
 
       } catch (err) {
-        whoEl.innerText = "LIFFの起動に失敗しました";
-        msgEl.innerText = "エラー：\n" + (err && err.message ? err.message : err);
+        seeOnly("LIFFの起動に失敗しました", "エラー：\n" + (err && err.message ? err.message : err));
       }
     })();
 
-    function openRegisterModal() {
-      overlay.style.display = "flex";
-      regStep1.classList.remove("hide");
-      regStep2.classList.add("hide");
-      regMsg1.textContent = "";
-      regMsg2.textContent = "";
-      regStaffCodeEl.value = "";
-      regCandidateCode = "";
-      regCandidateName = "";
+    function seeOnly(title, text){
+      whoEl.innerText = title;
+      msgEl.innerText = text;
     }
 
-    function closeRegisterModal() {
-      overlay.style.display = "none";
-    }
-
-    function regBack() {
-      regStep2.classList.add("hide");
-      regStep1.classList.remove("hide");
-      regMsg1.textContent = "";
-      regMsg2.textContent = "";
-    }
-
-    async function regCheck() {
-      regMsg1.textContent = "";
-      const code = (regStaffCodeEl.value || "").trim();
-      if (!/^\d+$/.test(code)) {
-        regMsg1.textContent = "スタッフコードは半角数字で入力してください。";
-        return;
-      }
-
-      const text = await apiPost({ action:"lookupStaff", staffCode: code });
-      let data;
-      try { data = JSON.parse(text); } catch { data = { ok:false, message:text }; }
-
-      if (!data.ok) {
-        regMsg1.textContent = data.message || "確認に失敗しました";
-        return;
-      }
-
-      regCandidateCode = code;
-      regCandidateName = data.name || "";
-
-      regConfirmText.textContent =
-        `あなたは、「${regCandidateName}」さんですね？\n間違いなければ「登録」を押してください。`;
-
-      regStep1.classList.add("hide");
-      regStep2.classList.remove("hide");
-      regMsg2.textContent = "";
-    }
-
-    async function regDo() {
-      regMsg2.textContent = "";
-      if (!regCandidateCode) {
-        regMsg2.textContent = "スタッフコードが未入力です。";
-        return;
-      }
-
-      const text = await apiPost({
-        action: "register",
-        staffCode: regCandidateCode,
-        userId: lineUserId,
-        displayName: lineDisplayName
-      });
-
-      let data;
-      try { data = JSON.parse(text); } catch { data = { ok:false, message:text }; }
-
-      if (!data.ok) {
-        regMsg2.textContent = data.message || "登録に失敗しました";
-        return;
-      }
-
-      // 登録完了 → 通常画面へ
-      closeRegisterModal();
-      msgEl.innerText = "登録しました。";
-      await loadStores();
-      await loadShiftList();
-    }
-
-    async function apiPost(paramsObj) {
+    async function apiText(paramsObj) {
       const params = new URLSearchParams();
       Object.entries(paramsObj).forEach(([k,v]) => params.append(k, v));
       const res = await fetch(GAS_URL, {
@@ -278,10 +213,66 @@
       return await res.text();
     }
 
+    async function apiJson(paramsObj) {
+      const t = await apiText(paramsObj);
+      try { return JSON.parse(t); } catch { return { ok:false, message:t }; }
+    }
+
+    // ===== 初回登録 =====
+    function openRegisterModal() {
+      overlayReg.style.display = "flex";
+      regStep1.classList.remove("hide");
+      regStep2.classList.add("hide");
+      regMsg1.textContent = "";
+      regMsg2.textContent = "";
+      regStaffCodeEl.value = "";
+      regCandidateCode = "";
+      regCandidateName = "";
+    }
+    function closeRegisterModal() { overlayReg.style.display = "none"; }
+    function regBack() {
+      regStep2.classList.add("hide");
+      regStep1.classList.remove("hide");
+      regMsg1.textContent = "";
+      regMsg2.textContent = "";
+    }
+
+    async function regCheck() {
+      regMsg1.textContent = "";
+      const code = (regStaffCodeEl.value || "").trim();
+      if (!/^\d+$/.test(code)) { regMsg1.textContent = "スタッフコードは半角数字で入力してください。"; return; }
+
+      const data = await apiJson({ action:"lookupStaff", staffCode: code });
+      if (!data.ok) { regMsg1.textContent = data.message || "確認に失敗しました"; return; }
+
+      regCandidateCode = code;
+      regCandidateName = data.name || "";
+      regConfirmText.textContent = `あなたは、「${regCandidateName}」さんですね？\n間違いなければ「登録」を押してください。`;
+
+      regStep1.classList.add("hide");
+      regStep2.classList.remove("hide");
+      regMsg2.textContent = "";
+    }
+
+    async function regDo() {
+      regMsg2.textContent = "";
+      const data = await apiJson({
+        action:"register",
+        staffCode: regCandidateCode,
+        userId: lineUserId,
+        displayName: lineDisplayName
+      });
+      if (!data.ok) { regMsg2.textContent = data.message || "登録に失敗しました"; return; }
+
+      closeRegisterModal();
+      msgEl.innerText = "登録しました。";
+      await loadStores();
+      await loadShiftList();
+    }
+
+    // ===== 店名読み込み =====
     async function loadStores() {
-      const text = await apiPost({ action:"stores" });
-      let data;
-      try { data = JSON.parse(text); } catch { return; }
+      const data = await apiJson({ action:"stores" });
       if (!data.ok) return;
 
       manualStoreEl.innerHTML = `<option value="">店名を選択</option>`;
@@ -293,20 +284,11 @@
       });
     }
 
+    // ===== 一覧 =====
     async function loadShiftList() {
       msgEl.innerText = "出勤一覧を取得中…";
-
-      const text = await apiPost({ action:"list", date: DISPLAY_DATE, userId: lineUserId });
-
-      let data;
-      try { data = JSON.parse(text); } catch {
-        msgEl.innerText = "一覧の取得に失敗しました。\n" + text;
-        return;
-      }
-      if (!data.ok) {
-        msgEl.innerText = "一覧の取得に失敗しました。\n" + (data.message || "");
-        return;
-      }
+      const data = await apiJson({ action:"list", date: DISPLAY_DATE, userId: lineUserId });
+      if (!data.ok) { msgEl.innerText = "一覧取得失敗\n" + (data.message || ""); return; }
 
       renderTable(data.items || []);
       msgEl.innerText = (data.items && data.items.length) ? "一覧を表示しました" : "出勤者がいません";
@@ -319,10 +301,10 @@
         <table>
           <thead>
             <tr>
-              <th style="width: 28%;">店名</th>
-              <th style="width: 28%;">開始日時</th>
-              <th style="width: 24%;">名前</th>
-              <th style="width: 20%;">出勤確認</th>
+              <th style="width: 30%;">店名</th>
+              <th style="width: 30%;">開始日時</th>
+              <th style="width: 25%;">名前</th>
+              <th style="width: 15%;">出勤確認</th>
             </tr>
           </thead>
           <tbody>
@@ -335,6 +317,7 @@
         const staffCode = esc(it.staffCode || "");
         const confirmed = !!it.confirmed;
         const canConfirm = !!it.canConfirm;
+        const isManual = !!it.isManual;
 
         let btnClass = "btnGray";
         let btnText = "確認できません";
@@ -348,12 +331,14 @@
           btnClass = "btnRed";
           btnText = "出勤確認";
           disabled = "";
-          onClick = `onclick="confirmWork('${staffCode}', '${name}')"`
+          onClick = `onclick="confirmWork('${staffCode}')"`
         }
+
+        const manualTag = isManual ? `<span class="tagManual">臨時</span>` : "";
 
         html += `
           <tr>
-            <td>${store}</td>
+            <td>${store}${manualTag}</td>
             <td>${startAt}</td>
             <td>${name}</td>
             <td>
@@ -369,55 +354,69 @@
       tableWrap.innerHTML = html;
     }
 
-    async function confirmWork(staffCode, name) {
+    async function confirmWork(staffCode) {
       msgEl.innerText = "確認中…";
-
-      const text = await apiPost({
+      const data = await apiJson({
         action: "confirm",
         date: DISPLAY_DATE,
         staffCode,
         userId: lineUserId,
         displayName: lineDisplayName
       });
-
-      let data;
-      try { data = JSON.parse(text); } catch {
-        msgEl.innerText = "送信に失敗しました。\n" + text;
-        return;
-      }
-
       msgEl.innerText = data.ok ? "確認OK" : ("NG: " + (data.message || "不明なエラー"));
       await loadShiftList();
     }
 
-    async function manualAdd() {
+    // ===== 臨時（手入力）：確認 → モーダル → 登録 =====
+    async function manualCheck() {
+      msgEl.innerText = "";
       const staffCode = manualStaffCodeEl.value.trim();
       const store = manualStoreEl.value.trim();
-      if (!staffCode) { msgEl.innerText = "スタッフコードを入れてください"; return; }
+
+      if (!/^\d+$/.test(staffCode)) { msgEl.innerText = "スタッフコードは半角数字で入力してください"; return; }
       if (!store) { msgEl.innerText = "店名を選んでください"; return; }
 
+      const data = await apiJson({ action:"lookupStaff", staffCode });
+      if (!data.ok) { msgEl.innerText = data.message || "無効な番号です"; return; }
+
+      manualCandidateCode = staffCode;
+      manualCandidateName = data.name || "";
+      manualCandidateStore = store;
+
+      manualMsg.textContent = "";
+      manualConfirmText.textContent =
+        `臨時登録します。\n\nスタッフ：${manualCandidateName}\n店名：${manualCandidateStore}\n\nよろしければ「登録」を押してください。`;
+      overlayManual.style.display = "flex";
+    }
+
+    function manualClose() {
+      overlayManual.style.display = "none";
+    }
+
+    async function manualDo() {
+      manualMsg.textContent = "";
       manualBtnEl.disabled = true;
 
-      msgEl.innerText = "臨時登録中…";
-      const text = await apiPost({
-        action: "manualAdd",
+      const data = await apiJson({
+        action:"manualAdd",
         date: DISPLAY_DATE,
-        staffCode,
-        store,
+        staffCode: manualCandidateCode,
+        store: manualCandidateStore,
         userId: lineUserId,
         displayName: lineDisplayName
       });
 
-      let data;
-      try { data = JSON.parse(text); } catch {
-        msgEl.innerText = "送信に失敗しました。\n" + text;
-        manualBtnEl.disabled = false;
+      manualBtnEl.disabled = false;
+
+      if (!data.ok) {
+        manualMsg.textContent = data.message || "登録に失敗しました";
         return;
       }
 
-      msgEl.innerText = data.ok ? "臨時登録OK" : ("NG: " + (data.message || "不明なエラー"));
-      manualBtnEl.disabled = false;
+      overlayManual.style.display = "none";
       manualStaffCodeEl.value = "";
+      manualStoreEl.value = "";
+      msgEl.innerText = "臨時登録OK";
       await loadShiftList();
     }
 
