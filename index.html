@@ -10,12 +10,15 @@
     h1 { font-size: 20px; text-align: center; }
     input, button { width: 100%; padding: 12px; margin-top: 12px; font-size: 16px; }
     button { background: #06c755; color: white; border: none; border-radius: 8px; }
-    .msg { margin-top: 15px; text-align: center; }
+    .msg { margin-top: 15px; text-align: center; white-space: pre-wrap; }
+    .sub { font-size: 12px; color: #666; text-align: center; margin-top: 8px; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>出勤確認</h1>
+
+    <div class="sub" id="who">読み込み中…</div>
 
     <input id="staffCode" placeholder="スタッフコード" />
     <button onclick="send()">出勤しました</button>
@@ -23,18 +26,62 @@
     <div class="msg" id="msg"></div>
   </div>
 
+  <!-- LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
   <script>
+    // ★あなたのLIFF ID
+    const LIFF_ID = "2008802899-oJWsorEf";
+
+    // ★あなたのGAS（/exec）※OK doGet が出るURL
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-    function send() {
-      const staffCode = document.getElementById("staffCode").value;
-      const msg = document.getElementById("msg");
-      if (!staffCode) { msg.innerText = "スタッフコードを入れてください"; return; }
+    let lineUserId = "";
+    let lineDisplayName = "";
 
+    const msgEl = document.getElementById("msg");
+    const whoEl = document.getElementById("who");
+
+    // 画面を開いたらLIFF起動
+    (async function initLiff() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+
+        // LINEログインしてないならログインへ
+        if (!liff.isLoggedIn()) {
+          whoEl.innerText = "LINEログインが必要です（自動でログインに進みます）";
+          liff.login();
+          return;
+        }
+
+        // プロフィール取得（名前）
+        const profile = await liff.getProfile();
+        lineUserId = profile.userId || "";
+        lineDisplayName = profile.displayName || "";
+
+        whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
+
+      } catch (err) {
+        whoEl.innerText = "LIFFの起動に失敗しました";
+        msgEl.innerText = "エラー詳細：\n" + (err && err.message ? err.message : err);
+      }
+    })();
+
+    function send() {
+      const staffCode = document.getElementById("staffCode").value.trim();
+      if (!staffCode) { msgEl.innerText = "スタッフコードを入れてください"; return; }
+
+      // LIFF情報がまだ取れてない場合
+      if (!lineUserId) {
+        msgEl.innerText = "LINE情報を取得中です。少し待ってからもう一度押してください。";
+        return;
+      }
+
+      // ★フォーム方式（通信失敗しにくい）
       const params = new URLSearchParams();
       params.append("staffCode", staffCode);
-      params.append("userId", "liff");
-      params.append("displayName", "");
+      params.append("userId", lineUserId);
+      params.append("displayName", lineDisplayName);
 
       fetch(GAS_URL, {
         method: "POST",
@@ -42,8 +89,8 @@
         body: params.toString(),
       })
       .then(r => r.text())
-      .then(t => msg.innerText = t)
-      .catch(err => msg.innerText = "通信エラー：" + err);
+      .then(t => msgEl.innerText = t)
+      .catch(err => msgEl.innerText = "通信エラー：\n" + err);
     }
   </script>
 </body>
