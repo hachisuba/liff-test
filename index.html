@@ -67,10 +67,17 @@
 
   async function postToGas(payload) {
     const res = await fetch(GAS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    userId,
+    displayName,
+    liffUrl: location.href
+  })
+});
+
     const txt = await res.text();
     let json = null;
     try { json = JSON.parse(txt); } catch (_) {}
