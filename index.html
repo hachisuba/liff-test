@@ -201,8 +201,20 @@
     const LIFF_ID = "2008802899-oJWsorEf";
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-    // ★固定日を廃止：常に「今日」
-    let DISPLAY_DATE = getTodayKey_();
+    // ===== 今日（JST固定で判定） =====
+    function getTodayKeyJST_() {
+      const parts = new Intl.DateTimeFormat("ja-JP", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric", month: "2-digit", day: "2-digit"
+      }).formatToParts(new Date());
+
+      const y = parts.find(p => p.type === "year").value;
+      const m = parts.find(p => p.type === "month").value;
+      const d = parts.find(p => p.type === "day").value;
+      return `${y}-${m}-${d}`;
+    }
+
+    let DISPLAY_DATE = getTodayKeyJST_();
 
     let lineUserId = "";
     let lineDisplayName = "";
@@ -270,22 +282,18 @@
         lineDisplayName = profile.displayName || "";
         whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
 
-        // 進捗：1/4
         busyOn_("初期チェック中…", "あなたの登録状態を確認しています", 1, 4, 15);
 
         const me = await apiJson({ action:"me", userId: lineUserId });
         if (!me.ok) { busyOff_(); msgEl.innerText = "初期チェック失敗\n" + (me.message || ""); return; }
         if (!me.registered) { busyOff_(); openRegisterModal(); return; }
 
-        // 進捗：2/4
         busyOn_("読み込み中…", "店名一覧を取得しています", 2, 4, 40);
         await loadStores();
 
-        // 進捗：3/4
         busyOn_("読み込み中…", "本日の出勤一覧を取得しています", 3, 4, 70);
         await loadShiftList();
 
-        // 進捗：4/4
         busyOn_("表示準備…", "画面を更新しています", 4, 4, 95);
         await sleep_(150);
         busyOff_();
@@ -301,9 +309,12 @@
       msgEl.innerText = text;
     }
 
+    // ===== キャッシュ回避：cb=timestamp を追加 =====
     async function apiText(paramsObj) {
       const params = new URLSearchParams();
       Object.entries(paramsObj).forEach(([k,v]) => params.append(k, v));
+      params.append("cb", String(Date.now())); // ★ここ重要（キャッシュしにくくする）
+
       const res = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
@@ -317,7 +328,7 @@
       try { return JSON.parse(t); } catch { return { ok:false, message:t }; }
     }
 
-    // ===== 処理中UI（ロック＋進捗表示） =====
+    // ===== 処理中UI =====
     function busyOn_(title, text, step, totalSteps, pct) {
       busyOverlay.style.display = "flex";
       busyTitle.textContent = title || "処理中…";
@@ -341,14 +352,12 @@
     }
 
     function setAllButtonsDisabled_(disabled) {
-      // テーブル内ボタンも含めて全部ロック
       const btns = document.querySelectorAll("button");
       btns.forEach(b => {
         if (disabled) {
           b.dataset.prevDisabled = b.disabled ? "1" : "0";
           b.disabled = true;
         } else {
-          // 元々disabledだったものは戻さない
           const prev = b.dataset.prevDisabled;
           if (prev === "1") b.disabled = true;
           else b.disabled = false;
@@ -357,27 +366,20 @@
       });
     }
 
-    // ===== 日付 =====
-    function getTodayKey_() {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = ("0" + (d.getMonth()+1)).slice(-2);
-      const day = ("0" + d.getDate()).slice(-2);
-      return `${y}-${m}-${day}`;
-    }
+    // ===== 日付表示 =====
     function refreshDateLabel_() {
-      dateLabel.innerText = `表示日：${DISPLAY_DATE}`;
+      const jst = getTodayKeyJST_();
+      dateLabel.innerText = `表示日：${DISPLAY_DATE}\nJST（日本時間）：${jst}`;
     }
 
-    // 0:00 を跨いだら自動更新（開きっぱなし対策）
+    // 0:00 を跨いだら自動更新（JSTで判定）
     function startMidnightWatcher_() {
       setInterval(async () => {
-        const today = getTodayKey_();
+        const today = getTodayKeyJST_();
         if (today !== DISPLAY_DATE) {
           DISPLAY_DATE = today;
           refreshDateLabel_();
 
-          // ログイン済みなら自動で再読み込み
           if (lineUserId) {
             busyOn_("日付が変わりました", "新しい日の一覧を読み込みます", 1, 1, 40);
             await loadShiftList();
@@ -386,7 +388,7 @@
             busyOff_();
           }
         }
-      }, 15000); // 15秒ごとにチェック
+      }, 15000);
     }
 
     function sleep_(ms){ return new Promise(r => setTimeout(r, ms)); }
@@ -436,6 +438,7 @@
     async function regDo() {
       if (busyLock) return;
       regMsg2.textContent = "";
+
       busyOn_("登録中…", "LINEとスタッフコードを紐づけています", 1, 2, 40);
 
       const data = await apiJson({
@@ -478,6 +481,7 @@
 
     // ===== 一覧 =====
     async function loadShiftList() {
+      refreshDateLabel_(); // 表示日の更新
       const data = await apiJson({ action:"list", date: DISPLAY_DATE, userId: lineUserId });
       if (!data.ok) { msgEl.innerText = "一覧取得失敗\n" + (data.message || ""); return; }
 
