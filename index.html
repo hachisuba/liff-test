@@ -48,120 +48,68 @@
   </div>
 
 <script>
-  // ========= ここだけ変える =========
-  const LIFF_ID = "2008802899-oJWsorEf"; // せなさんのLIFF ID
-  const GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbyxqtWxIVOObKnAOMSmbFA2mImQUBakK1H8DhNhc4VKZo6LUczBKwkR2g1JgmRG2a2B-w/exec"; // 例: https://script.google.com/macros/s/XXXX/exec
-  // ================================
+  const LIFF_ID = "2008802899-oJWsoEf";  // あなたのLIFF ID
+  const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyt7-ASEC_X62m3rKIo3Nd-f_1zOlQevKDkuLvMEOlg7gDVdVn2LSqiDu7rVzDsvlUrew/exec";
 
-  const $ = (id) => document.getElementById(id);
+  let currentUserId = "";
 
-  function setStatus(text, ok=true) {
-    $("statusText").textContent = text;
-    $("status").className = "card " + (ok ? "ok" : "ng");
+  async function init() {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile = await liff.getProfile();
+      currentUserId = profile.userId;
+
+      document.getElementById("status").textContent = "LIFFログインOK";
+      document.getElementById("userId").textContent = profile.userId;
+      document.getElementById("name").textContent = profile.displayName;
+
+    } catch (e) {
+      document.getElementById("status").textContent = "エラー: " + (e && e.message ? e.message : e);
+    }
   }
 
-  function logDebug(obj) {
-    const t = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
-    $("debug").textContent += (t + "\n");
-  }
+  async function send() {
+    const staffCode = document.getElementById("staffCode").value.trim();
+    const result = document.getElementById("result");
 
-  async function postToGas(payload) {
-    const res = await fetch(GAS_ENDPOINT, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    userId,
-    displayName,
-    liffUrl: location.href
-  })
-});
-
-    const txt = await res.text();
-    let json = null;
-    try { json = JSON.parse(txt); } catch (_) {}
-    return { status: res.status, text: txt, json };
-  }
-
-  async function main() {
-    // 0) 最低限チェック
-    if (!GAS_ENDPOINT || GAS_ENDPOINT.includes("ここにGAS")) {
-      setStatus("エラー：GAS_ENDPOINT が未設定です（index.html に貼ってね）", false);
+    if (!currentUserId) {
+      result.textContent = "userIdが取れてません（LIFF初期化が完了してない）";
+      return;
+    }
+    if (!staffCode) {
+      result.textContent = "スタッフコードを入れてね";
       return;
     }
 
-    // 1) 起動情報
-    logDebug("起動URL: " + location.href);
-    logDebug("UA: " + navigator.userAgent);
+    // ★CORS回避のため「フォーム形式」で送る（JSON送信は失敗しがち）
+    const body = new URLSearchParams();
+    body.append("userId", currentUserId);
+    body.append("staffCode", staffCode);
 
     try {
-      setStatus("LIFF 初期化中…");
+      // no-cors にすると返事は読めないけど「送る」ことはできる
+      await fetch(GAS_WEBAPP_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString()
+      });
 
-      // 2) init（タイムアウトが怖いので明示で10秒）
-      const initPromise = liff.init({ liffId: LIFF_ID });
-      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error("liff.init が10秒でタイムアウトしました")), 10000));
-      await Promise.race([initPromise, timeoutPromise]);
-
-      // 3) ログインしてなければログインへ
-      if (!liff.isLoggedIn()) {
-        setStatus("未ログイン → ログイン画面へ…");
-        // redirectUri は「今開いてるURL」に固定（余計なズレ防止）
-        liff.login({ redirectUri: location.href });
-        return;
-      }
-
-      setStatus("ログイン済み → プロフィール取得中…");
-
-      // 4) profile（10秒タイムアウト）
-      const profPromise = liff.getProfile();
-      const timeoutPromise2 = new Promise((_, rej) => setTimeout(() => rej(new Error("getProfile が10秒でタイムアウトしました")), 10000));
-      const profile = await Promise.race([profPromise, timeoutPromise2]);
-
-      const userId = profile?.userId || "";
-      const displayName = profile?.displayName || "";
-
-      $("userId").textContent = userId || "（空）";
-      $("displayName").textContent = displayName || "（空）";
-
-      if (!userId) {
-        setStatus("エラー：userId が取れません（Scope=profile を確認）", false);
-        return;
-      }
-
-      setStatus("GASへ送信中…");
-
-      // 5) GASへ自動送信
-      const payload = {
-        userId,
-        displayName,
-        ua: navigator.userAgent,
-        liffUrl: location.href,
-      };
-
-      logDebug({ payload });
-
-      const r = await postToGas(payload);
-
-      $("resultText").textContent = r.json ? JSON.stringify(r.json, null, 2) : r.text;
-
-      if (r.json && r.json.ok) {
-        $("result").className = "card ok";
-        setStatus("完了：スプレッドシートに保存しました ✅");
-      } else {
-        $("result").className = "card ng";
-        setStatus("エラー：GASがOKを返していません（結果を見てね）", false);
-      }
-
-    } catch (err) {
-      $("result").className = "card ng";
-      $("resultText").textContent = String(err);
-      setStatus("エラー：" + String(err), false);
-      logDebug("ERROR: " + String(err));
+      result.textContent = "送信しました（記録できているはず）";
+    } catch (e) {
+      result.textContent = "送信エラー: " + (e && e.message ? e.message : e);
     }
   }
 
-  main();
+  window.onload = init;
 </script>
+<button onclick="send()">送信</button>
+<div id="result"></div>
 </body>
 </html>
