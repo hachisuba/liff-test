@@ -14,13 +14,10 @@
     .sectionTitle { font-weight: 800; margin: 14px 0 8px; }
     .formRow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
     input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; }
-    .btnBase {
-      padding: 10px 12px; border: none; border-radius: 10px;
-      color:#fff; font-weight: 800; cursor: pointer;
-      width: 100%;
-    }
-    .btnRed { background:#e53935; }
-    .btnGreen { background:#2e7d32; }
+
+    .btnBase { padding: 10px 12px; border: none; border-radius: 10px; color:#fff; font-weight: 800; width: 100%; }
+    .btnRed { background:#e53935; cursor:pointer; }
+    .btnGreen { background:#2e7d32; cursor:not-allowed; }
     .btnGray { background:#9e9e9e; cursor:not-allowed; }
     .btnSmall { padding: 8px 10px; font-size: 13px; }
 
@@ -28,7 +25,6 @@
     th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; font-size: 14px; }
     th { color:#555; font-weight:800; background:#fafafa; position: sticky; top: 0; }
     .pill { display:inline-block; background:#f2f2f2; padding:4px 8px; border-radius:999px; font-size:12px; color:#333; }
-    .right { text-align:right; }
 
     @media (max-width: 680px) {
       .formRow { grid-template-columns: 1fr; }
@@ -45,7 +41,7 @@
     <div id="tableWrap"></div>
 
     <div class="sectionTitle">臨時（手入力）</div>
-    <div class="sub">※ シフトに無い人を臨時で登録できます（開始日時は送信した時刻）</div>
+    <div class="sub">※ これは次のステップで「管理者だけ可」にもできます</div>
     <div class="formRow">
       <input id="manualStaffCode" placeholder="スタッフコード（例：10277）" inputmode="numeric" />
       <select id="manualStore">
@@ -62,7 +58,6 @@
     const LIFF_ID = "2008802899-oJWsorEf";
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-    // ★まずは固定：2026-01-02（後で「今日」にもできます）
     const DISPLAY_DATE = "2026-01-02";
 
     let lineUserId = "";
@@ -85,7 +80,6 @@
         if (!liff.isInClient()) {
           whoEl.innerText = "LINEアプリ内で開いてください";
           msgEl.innerText = "このページはLINEアプリから開いた時だけ使えます。";
-          disableAll_();
           return;
         }
 
@@ -105,21 +99,13 @@
 
       } catch (err) {
         whoEl.innerText = "LIFFの起動に失敗しました";
-        msgEl.innerText = "エラー詳細：\n" + (err && err.message ? err.message : err);
-        disableAll_();
+        msgEl.innerText = "エラー：\n" + (err && err.message ? err.message : err);
       }
     })();
-
-    function disableAll_() {
-      manualBtnEl.classList.remove("btnGreen");
-      manualBtnEl.classList.add("btnGray");
-      manualBtnEl.disabled = true;
-    }
 
     async function apiPost(paramsObj) {
       const params = new URLSearchParams();
       Object.entries(paramsObj).forEach(([k,v]) => params.append(k, v));
-
       const res = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
@@ -134,7 +120,6 @@
       try { data = JSON.parse(text); } catch { return; }
       if (!data.ok) return;
 
-      // プルダウン作り直し
       manualStoreEl.innerHTML = `<option value="">店名を選択</option>`;
       (data.items || []).forEach(store => {
         const opt = document.createElement("option");
@@ -147,7 +132,9 @@
     async function loadShiftList() {
       msgEl.innerText = "出勤一覧を取得中…";
 
-      const text = await apiPost({ action:"list", date: DISPLAY_DATE });
+      // ★ここが重要：userId を渡す
+      const text = await apiPost({ action:"list", date: DISPLAY_DATE, userId: lineUserId });
+
       let data;
       try { data = JSON.parse(text); } catch {
         msgEl.innerText = "一覧の取得に失敗しました。\n" + text;
@@ -163,10 +150,7 @@
     }
 
     function renderTable(items) {
-      if (!items.length) {
-        tableWrap.innerHTML = "";
-        return;
-      }
+      if (!items.length) { tableWrap.innerHTML = ""; return; }
 
       let html = `
         <table>
@@ -187,10 +171,22 @@
         const name = esc(it.name || "");
         const staffCode = esc(it.staffCode || "");
         const confirmed = !!it.confirmed;
+        const canConfirm = !!it.canConfirm; // ★本人の行だけtrue
 
-        const btnClass = confirmed ? "btnGreen" : "btnRed";
-        const btnText  = confirmed ? "確認済み" : "出勤確認";
-        const disabled = confirmed ? "disabled" : "";
+        let btnClass = "btnGray";
+        let btnText = "確認できません";
+        let disabled = "disabled";
+        let onClick = "";
+
+        if (confirmed) {
+          btnClass = "btnGreen";
+          btnText = "確認済み";
+        } else if (canConfirm) {
+          btnClass = "btnRed";
+          btnText = "出勤確認";
+          disabled = "";
+          onClick = `onclick="confirmWork('${staffCode}', '${name}')"`
+        }
 
         html += `
           <tr>
@@ -198,9 +194,7 @@
             <td>${startAt}</td>
             <td>${name}</td>
             <td>
-              <button class="btnBase btnSmall ${btnClass}"
-                ${disabled}
-                onclick="confirmWork('${staffCode}', '${name}')">
+              <button class="btnBase btnSmall ${btnClass}" ${disabled} ${onClick}>
                 ${btnText}
               </button>
             </td>
@@ -213,12 +207,6 @@
     }
 
     async function confirmWork(staffCode, name) {
-      if (!lineUserId) { msgEl.innerText = "LINE情報取得中です。少し待ってね。"; return; }
-      if (!staffCode) {
-        msgEl.innerText = `スタッフコードが見つかりません（${name}）\nstaffシートの名前と一致しているか確認してください。`;
-        return;
-      }
-
       msgEl.innerText = "確認中…";
 
       const text = await apiPost({
@@ -236,26 +224,18 @@
       }
 
       msgEl.innerText = data.ok ? "確認OK" : ("NG: " + (data.message || "不明なエラー"));
-
-      // 表を再読み込み（色を反映）
       await loadShiftList();
     }
 
     async function manualAdd() {
-      if (!lineUserId) { msgEl.innerText = "LINE情報取得中です。少し待ってね。"; return; }
-
       const staffCode = manualStaffCodeEl.value.trim();
       const store = manualStoreEl.value.trim();
-
       if (!staffCode) { msgEl.innerText = "スタッフコードを入れてください"; return; }
       if (!store) { msgEl.innerText = "店名を選んでください"; return; }
 
       manualBtnEl.disabled = true;
-      manualBtnEl.classList.remove("btnGreen");
-      manualBtnEl.classList.add("btnGray");
 
       msgEl.innerText = "臨時登録中…";
-
       const text = await apiPost({
         action: "manualAdd",
         date: DISPLAY_DATE,
@@ -269,21 +249,12 @@
       try { data = JSON.parse(text); } catch {
         msgEl.innerText = "送信に失敗しました。\n" + text;
         manualBtnEl.disabled = false;
-        manualBtnEl.classList.remove("btnGray");
-        manualBtnEl.classList.add("btnGreen");
         return;
       }
 
       msgEl.innerText = data.ok ? "臨時登録OK" : ("NG: " + (data.message || "不明なエラー"));
-
       manualBtnEl.disabled = false;
-      manualBtnEl.classList.remove("btnGray");
-      manualBtnEl.classList.add("btnGreen");
-
-      // 入力を軽くリセット
       manualStaffCodeEl.value = "";
-
-      // 表を再読み込み（臨時が反映される）
       await loadShiftList();
     }
 
