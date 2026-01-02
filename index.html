@@ -33,7 +33,7 @@
     // ★あなたのLIFF ID
     const LIFF_ID = "2008802899-oJWsorEf";
 
-    // ★あなたのGAS（/exec）※OK doGet が出るURL
+    // ★あなたのGAS（/exec）
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
     let lineUserId = "";
@@ -46,6 +46,13 @@
     (async function initLiff() {
       try {
         await liff.init({ liffId: LIFF_ID });
+
+        // ★さらに強く：LINEアプリ内じゃないとNG
+        if (!liff.isInClient()) {
+          whoEl.innerText = "LINEアプリ内で開いてください";
+          msgEl.innerText = "このページはLINEアプリから開いた時だけ使えます。";
+          return;
+        }
 
         // LINEログインしてないならログインへ
         if (!liff.isLoggedIn()) {
@@ -69,7 +76,25 @@
 
     function send() {
       const staffCode = document.getElementById("staffCode").value.trim();
-      if (!staffCode) { msgEl.innerText = "スタッフコードを入れてください"; return; }
+
+      if (!staffCode) {
+        msgEl.innerText = "スタッフコードを入れてください";
+        return;
+      }
+
+      // ★普通ブラウザ対策：LIFFが無い/ログインしてない/LINEアプリ内じゃない → 送信させない
+      if (typeof liff === "undefined") {
+        msgEl.innerText = "LINEのリンク（LIFF）から開いてください";
+        return;
+      }
+      if (!liff.isInClient()) {
+        msgEl.innerText = "LINEアプリ内で開いてください";
+        return;
+      }
+      if (!liff.isLoggedIn()) {
+        msgEl.innerText = "LINEログインが必要です（開き直してください）";
+        return;
+      }
 
       // LIFF情報がまだ取れてない場合
       if (!lineUserId) {
