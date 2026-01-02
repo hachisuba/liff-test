@@ -30,10 +30,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <script>
-    // ★あなたのLIFF ID
     const LIFF_ID = "2008802899-oJWsorEf";
-
-    // ★あなたのGAS（/exec）
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
     let lineUserId = "";
@@ -42,32 +39,28 @@
     const msgEl = document.getElementById("msg");
     const whoEl = document.getElementById("who");
 
-    // 画面を開いたらLIFF起動
     (async function initLiff() {
       try {
         await liff.init({ liffId: LIFF_ID });
 
-        // ★さらに強く：LINEアプリ内じゃないとNG
+        // LINEアプリ内じゃないとNG
         if (!liff.isInClient()) {
           whoEl.innerText = "LINEアプリ内で開いてください";
           msgEl.innerText = "このページはLINEアプリから開いた時だけ使えます。";
           return;
         }
 
-        // LINEログインしてないならログインへ
         if (!liff.isLoggedIn()) {
           whoEl.innerText = "LINEログインが必要です（自動でログインに進みます）";
           liff.login();
           return;
         }
 
-        // プロフィール取得（名前）
         const profile = await liff.getProfile();
         lineUserId = profile.userId || "";
         lineDisplayName = profile.displayName || "";
 
         whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
-
       } catch (err) {
         whoEl.innerText = "LIFFの起動に失敗しました";
         msgEl.innerText = "エラー詳細：\n" + (err && err.message ? err.message : err);
@@ -82,7 +75,7 @@
         return;
       }
 
-      // ★普通ブラウザ対策：LIFFが無い/ログインしてない/LINEアプリ内じゃない → 送信させない
+      // 普通ブラウザ対策
       if (typeof liff === "undefined") {
         msgEl.innerText = "LINEのリンク（LIFF）から開いてください";
         return;
@@ -95,14 +88,11 @@
         msgEl.innerText = "LINEログインが必要です（開き直してください）";
         return;
       }
-
-      // LIFF情報がまだ取れてない場合
       if (!lineUserId) {
         msgEl.innerText = "LINE情報を取得中です。少し待ってからもう一度押してください。";
         return;
       }
 
-      // ★フォーム方式（通信失敗しにくい）
       const params = new URLSearchParams();
       params.append("staffCode", staffCode);
       params.append("userId", lineUserId);
