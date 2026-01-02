@@ -5,24 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>出勤確認</title>
   <style>
-    body { font-family: sans-serif; background: #f7f7f7; padding: 20px; }
-    .card { background: #fff; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    h1 { font-size: 20px; text-align: center; }
-    input, button { width: 100%; padding: 12px; margin-top: 12px; font-size: 16px; }
-    button { background: #06c755; color: white; border: none; border-radius: 8px; }
-    .msg { margin-top: 15px; text-align: center; white-space: pre-wrap; }
-    .sub { font-size: 12px; color: #666; text-align: center; margin-top: 8px; }
+    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; background:#f7f7f7; padding: 14px; }
+    .card { background:#fff; padding:14px; border-radius:12px; max-width: 760px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+    h1 { margin: 0 0 10px; font-size: 20px; text-align:center; }
+    .sub { font-size: 12px; color:#666; text-align:center; margin-bottom: 10px; white-space: pre-wrap; }
+    .msg { margin-top: 10px; text-align:center; white-space: pre-wrap; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; font-size: 14px; }
+    th { color:#555; font-weight:700; background:#fafafa; position: sticky; top: 0; }
+    .btn {
+      width: 100%;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 10px;
+      background:#06c755;
+      color:#fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn:disabled { background:#bbb; cursor:not-allowed; }
+    .pill { display:inline-block; background:#f2f2f2; padding:4px 8px; border-radius:999px; font-size:12px; color:#333; }
+    .right { text-align:right; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>出勤確認</h1>
-
     <div class="sub" id="who">読み込み中…</div>
 
-    <input id="staffCode" placeholder="スタッフコード" />
-    <button onclick="send()">出勤しました</button>
+    <div class="sub">
+      <span class="pill" id="dateLabel"></span>
+    </div>
 
+    <div id="tableWrap"></div>
     <div class="msg" id="msg"></div>
   </div>
 
@@ -30,16 +45,26 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <script>
+    // ★あなたのLIFF ID
     const LIFF_ID = "2008802899-oJWsorEf";
+
+    // ★あなたのGAS（/exec）
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
+
+    // ★まずは固定：2026-01-02 の出勤一覧を表示（後で「今日」に変えられる）
+    const DISPLAY_DATE = "2026-01-02";
 
     let lineUserId = "";
     let lineDisplayName = "";
 
-    const msgEl = document.getElementById("msg");
     const whoEl = document.getElementById("who");
+    const msgEl = document.getElementById("msg");
+    const tableWrap = document.getElementById("tableWrap");
+    const dateLabel = document.getElementById("dateLabel");
 
-    (async function initLiff() {
+    dateLabel.innerText = `表示日：${DISPLAY_DATE}`;
+
+    (async function init() {
       try {
         await liff.init({ liffId: LIFF_ID });
 
@@ -50,62 +75,145 @@
           return;
         }
 
+        // ログイン
         if (!liff.isLoggedIn()) {
           whoEl.innerText = "LINEログインが必要です（自動でログインに進みます）";
           liff.login();
           return;
         }
 
+        // プロフィール
         const profile = await liff.getProfile();
         lineUserId = profile.userId || "";
         lineDisplayName = profile.displayName || "";
-
         whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
+
+        // 一覧取得
+        await loadShiftList();
+
       } catch (err) {
         whoEl.innerText = "LIFFの起動に失敗しました";
         msgEl.innerText = "エラー詳細：\n" + (err && err.message ? err.message : err);
       }
     })();
 
-    function send() {
-      const staffCode = document.getElementById("staffCode").value.trim();
-
-      if (!staffCode) {
-        msgEl.innerText = "スタッフコードを入れてください";
-        return;
-      }
-
-      // 普通ブラウザ対策
-      if (typeof liff === "undefined") {
-        msgEl.innerText = "LINEのリンク（LIFF）から開いてください";
-        return;
-      }
-      if (!liff.isInClient()) {
-        msgEl.innerText = "LINEアプリ内で開いてください";
-        return;
-      }
-      if (!liff.isLoggedIn()) {
-        msgEl.innerText = "LINEログインが必要です（開き直してください）";
-        return;
-      }
-      if (!lineUserId) {
-        msgEl.innerText = "LINE情報を取得中です。少し待ってからもう一度押してください。";
-        return;
-      }
+    async function loadShiftList() {
+      msgEl.innerText = "出勤一覧を取得中…";
 
       const params = new URLSearchParams();
+      params.append("action", "list");
+      params.append("date", DISPLAY_DATE);
+
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: params.toString(),
+      });
+
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        msgEl.innerText = "一覧の取得に失敗しました。\n" + text;
+        return;
+      }
+
+      if (!data.ok) {
+        msgEl.innerText = "一覧の取得に失敗しました。\n" + (data.message || "");
+        return;
+      }
+
+      renderTable(data.items || []);
+      msgEl.innerText = (data.items && data.items.length)
+        ? "一覧を表示しました"
+        : "本日の出勤者がいません";
+    }
+
+    function renderTable(items) {
+      if (!items.length) {
+        tableWrap.innerHTML = "";
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 28%;">店名</th>
+              <th style="width: 28%;">出勤時間</th>
+              <th style="width: 24%;">名前</th>
+              <th style="width: 20%;">出勤確認</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const it of items) {
+        const store = escapeHtml(it.store || "");
+        const startAt = escapeHtml(it.startAt || "");
+        const name = escapeHtml(it.name || "");
+        const staffCode = escapeHtml(it.staffCode || "");
+
+        html += `
+          <tr>
+            <td>${store}</td>
+            <td>${startAt}</td>
+            <td>${name}</td>
+            <td>
+              <button class="btn" onclick="confirmWork('${staffCode}', '${name}')">
+                出勤確認
+              </button>
+            </td>
+          </tr>
+        `;
+      }
+
+      html += "</tbody></table>";
+      tableWrap.innerHTML = html;
+    }
+
+    // ※次ステップで「確認OK」まで完成させる
+    async function confirmWork(staffCode, name) {
+      if (!lineUserId) {
+        msgEl.innerText = "LINE情報を取得中です。少し待ってからもう一度。";
+        return;
+      }
+      if (!staffCode) {
+        msgEl.innerText = `スタッフコードが見つかりません（${name}）\nstaffシートの名前と一致しているか確認してください。`;
+        return;
+      }
+
+      msgEl.innerText = "送信中…";
+
+      const params = new URLSearchParams();
+      params.append("action", "confirm");
+      params.append("date", DISPLAY_DATE);
       params.append("staffCode", staffCode);
       params.append("userId", lineUserId);
       params.append("displayName", lineDisplayName);
 
-      fetch(GAS_URL, {
+      const res = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
         body: params.toString(),
-      })
-      .then(r => r.text())
-      .then(t => msgEl.innerText = t)
-      .catch(err => msgEl.innerText = "通信エラー：\n" + err);
+      });
+
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch {
+        msgEl.innerText = "送信に失敗しました。\n" + text;
+        return;
+      }
+
+      msgEl.innerText = data.ok ? "確認OK" : ("NG: " + (data.message || "不明なエラー"));
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, s => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[s]));
     }
   </script>
 </body>
