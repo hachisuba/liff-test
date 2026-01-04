@@ -58,63 +58,6 @@
       .modalRow { grid-template-columns: 1fr; }
       .modalBtns { grid-template-columns: 1fr; }
     }
-
-    /* ===== 処理中オーバーレイ（スピナー＋進捗バー） ===== */
-    .busyOverlay{
-      position: fixed; inset: 0;
-      background: rgba(255,255,255,0.75);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 9998;
-      padding: 16px;
-    }
-    .busyBox{
-      width: 100%;
-      max-width: 520px;
-      background: #fff;
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.18);
-    }
-    .busyTop{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      margin-bottom: 10px;
-    }
-    .spinner{
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      border: 3px solid #ddd;
-      border-top-color: #06c755;
-      animation: spin 0.9s linear infinite;
-      flex: 0 0 auto;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .busyTitle{ font-weight: 900; font-size: 15px; }
-    .busyText{ font-size: 13px; color:#555; white-space: pre-wrap; }
-
-    .barWrap{
-      margin-top: 12px;
-      background: #eee;
-      border-radius: 999px;
-      overflow: hidden;
-      height: 10px;
-    }
-    .bar{
-      height: 10px;
-      width: 0%;
-      background: #06c755;
-      transition: width .25s ease;
-    }
-    .barMeta{
-      display:flex;
-      justify-content: space-between;
-      font-size: 12px;
-      color:#666;
-      margin-top: 6px;
-    }
   </style>
 </head>
 <body>
@@ -137,25 +80,6 @@
     </div>
 
     <div class="msg" id="msg"></div>
-  </div>
-
-  <!-- 処理中オーバーレイ -->
-  <div class="busyOverlay" id="busyOverlay">
-    <div class="busyBox">
-      <div class="busyTop">
-        <div class="spinner"></div>
-        <div>
-          <div class="busyTitle" id="busyTitle">処理中…</div>
-          <div class="busyText" id="busyText">少しだけお待ちください</div>
-        </div>
-      </div>
-
-      <div class="barWrap"><div class="bar" id="busyBar"></div></div>
-      <div class="barMeta">
-        <div id="busyPct">0%</div>
-        <div id="busyStep">1/4</div>
-      </div>
-    </div>
   </div>
 
   <!-- 初回登録モーダル -->
@@ -201,20 +125,8 @@
     const LIFF_ID = "2008802899-oJWsorEf";
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-    // ===== 今日（JST固定で判定） =====
-    function getTodayKeyJST_() {
-      const parts = new Intl.DateTimeFormat("ja-JP", {
-        timeZone: "Asia/Tokyo",
-        year: "numeric", month: "2-digit", day: "2-digit"
-      }).formatToParts(new Date());
-
-      const y = parts.find(p => p.type === "year").value;
-      const m = parts.find(p => p.type === "month").value;
-      const d = parts.find(p => p.type === "day").value;
-      return `${y}-${m}-${d}`;
-    }
-
-    let DISPLAY_DATE = getTodayKeyJST_();
+    // ★テスト用固定日（後で「今日」に変更OK）
+    const DISPLAY_DATE = "2026-01-02";
 
     let lineUserId = "";
     let lineDisplayName = "";
@@ -251,17 +163,7 @@
     const manualConfirmText = document.getElementById("manualConfirmText");
     const manualMsg = document.getElementById("manualMsg");
 
-    // 処理中UI
-    const busyOverlay = document.getElementById("busyOverlay");
-    const busyTitle = document.getElementById("busyTitle");
-    const busyText  = document.getElementById("busyText");
-    const busyBar   = document.getElementById("busyBar");
-    const busyPct   = document.getElementById("busyPct");
-    const busyStep  = document.getElementById("busyStep");
-    let busyLock = false;
-
-    refreshDateLabel_();
-    startMidnightWatcher_();
+    dateLabel.innerText = `表示日：${DISPLAY_DATE}`;
 
     (async function init() {
       try {
@@ -282,24 +184,15 @@
         lineDisplayName = profile.displayName || "";
         whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
 
-        busyOn_("初期チェック中…", "あなたの登録状態を確認しています", 1, 4, 15);
-
+        // 登録済みチェック
         const me = await apiJson({ action:"me", userId: lineUserId });
-        if (!me.ok) { busyOff_(); msgEl.innerText = "初期チェック失敗\n" + (me.message || ""); return; }
-        if (!me.registered) { busyOff_(); openRegisterModal(); return; }
+        if (!me.ok) { msgEl.innerText = "初期チェック失敗\n" + (me.message || ""); return; }
+        if (!me.registered) { openRegisterModal(); return; }
 
-        busyOn_("読み込み中…", "店名一覧を取得しています", 2, 4, 40);
         await loadStores();
-
-        busyOn_("読み込み中…", "本日の出勤一覧を取得しています", 3, 4, 70);
         await loadShiftList();
 
-        busyOn_("表示準備…", "画面を更新しています", 4, 4, 95);
-        await sleep_(150);
-        busyOff_();
-
       } catch (err) {
-        busyOff_();
         seeOnly("LIFFの起動に失敗しました", "エラー：\n" + (err && err.message ? err.message : err));
       }
     })();
@@ -309,12 +202,9 @@
       msgEl.innerText = text;
     }
 
-    // ===== キャッシュ回避：cb=timestamp を追加 =====
     async function apiText(paramsObj) {
       const params = new URLSearchParams();
       Object.entries(paramsObj).forEach(([k,v]) => params.append(k, v));
-      params.append("cb", String(Date.now())); // ★ここ重要（キャッシュしにくくする）
-
       const res = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
@@ -328,98 +218,17 @@
       try { return JSON.parse(t); } catch { return { ok:false, message:t }; }
     }
 
-    // ===== 処理中UI =====
-    function busyOn_(title, text, step, totalSteps, pct) {
-      busyOverlay.style.display = "flex";
-      busyTitle.textContent = title || "処理中…";
-      busyText.textContent = text || "少しだけお待ちください";
-      const p = Math.max(0, Math.min(100, pct || 0));
-      busyBar.style.width = p + "%";
-      busyPct.textContent = p + "%";
-      busyStep.textContent = `${step || 1}/${totalSteps || 1}`;
-
-      setAllButtonsDisabled_(true);
-      busyLock = true;
-    }
-
-    function busyOff_() {
-      busyOverlay.style.display = "none";
-      busyBar.style.width = "0%";
-      busyPct.textContent = "0%";
-      busyStep.textContent = "1/1";
-      setAllButtonsDisabled_(false);
-      busyLock = false;
-    }
-
-    function setAllButtonsDisabled_(disabled) {
-      const btns = document.querySelectorAll("button");
-      btns.forEach(b => {
-        if (disabled) {
-          b.dataset.prevDisabled = b.disabled ? "1" : "0";
-          b.disabled = true;
-        } else {
-          const prev = b.dataset.prevDisabled;
-          if (prev === "1") b.disabled = true;
-          else b.disabled = false;
-          delete b.dataset.prevDisabled;
-        }
-      });
-    }
-
-    // ===== 日付表示 =====
-    function refreshDateLabel_() {
-      const jst = getTodayKeyJST_();
-      dateLabel.innerText = `表示日：${DISPLAY_DATE}\nJST（日本時間）：${jst}`;
-    }
-
-    // 0:00 を跨いだら自動更新（JSTで判定）
-    function startMidnightWatcher_() {
-      setInterval(async () => {
-        const today = getTodayKeyJST_();
-        if (today !== DISPLAY_DATE) {
-          DISPLAY_DATE = today;
-          refreshDateLabel_();
-
-          if (lineUserId) {
-            busyOn_("日付が変わりました", "新しい日の一覧を読み込みます", 1, 1, 40);
-            await loadShiftList();
-            busyOn_("更新中…", "画面を更新しています", 1, 1, 90);
-            await sleep_(120);
-            busyOff_();
-          }
-        }
-      }, 15000);
-    }
-
-    function sleep_(ms){ return new Promise(r => setTimeout(r, ms)); }
-
     // ===== 初回登録 =====
     function openRegisterModal() {
-
-      
-       function openRegisterModal() {
-  // ★処理中ロックを強制解除
-  try { busyOff_(); } catch(e) {}
-  busyLock = false;
-
-  // ★登録モーダル内ボタンだけは確実に押せる状態に戻す
-  const regBtns = document.querySelectorAll("#overlayReg button");
-  regBtns.forEach(b => {
-    b.disabled = false;
-    delete b.dataset.prevDisabled;
-  });
-
-  overlayReg.style.display = "flex";
-  regStep1.classList.remove("hide");
-  regStep2.classList.add("hide");
-  regMsg1.textContent = "";
-  regMsg2.textContent = "";
-  regStaffCodeEl.value = "";
-  regCandidateCode = "";
-  regCandidateName = "";
-}
-
-      
+      overlayReg.style.display = "flex";
+      regStep1.classList.remove("hide");
+      regStep2.classList.add("hide");
+      regMsg1.textContent = "";
+      regMsg2.textContent = "";
+      regStaffCodeEl.value = "";
+      regCandidateCode = "";
+      regCandidateName = "";
+    }
     function closeRegisterModal() { overlayReg.style.display = "none"; }
     function regBack() {
       regStep2.classList.add("hide");
@@ -429,17 +238,11 @@
     }
 
     async function regCheck() {
-      if (busyLock) return;
       regMsg1.textContent = "";
       const code = (regStaffCodeEl.value || "").trim();
       if (!/^\d+$/.test(code)) { regMsg1.textContent = "スタッフコードは半角数字で入力してください。"; return; }
 
-      busyOn_("確認中…", "スタッフコードを照合しています", 1, 2, 30);
       const data = await apiJson({ action:"lookupStaff", staffCode: code });
-      busyOn_("確認中…", "結果を反映しています", 2, 2, 80);
-      await sleep_(80);
-      busyOff_();
-
       if (!data.ok) { regMsg1.textContent = data.message || "確認に失敗しました"; return; }
 
       regCandidateCode = code;
@@ -452,33 +255,19 @@
     }
 
     async function regDo() {
-      if (busyLock) return;
       regMsg2.textContent = "";
-
-      busyOn_("登録中…", "LINEとスタッフコードを紐づけています", 1, 2, 40);
-
       const data = await apiJson({
         action:"register",
         staffCode: regCandidateCode,
         userId: lineUserId,
         displayName: lineDisplayName
       });
-
-      busyOn_("登録中…", "画面を更新しています", 2, 2, 90);
-      await sleep_(120);
-      busyOff_();
-
       if (!data.ok) { regMsg2.textContent = data.message || "登録に失敗しました"; return; }
 
       closeRegisterModal();
       msgEl.innerText = "登録しました。";
-
-      busyOn_("読み込み中…", "一覧を取得しています", 1, 1, 40);
       await loadStores();
       await loadShiftList();
-      busyOn_("更新中…", "画面を更新しています", 1, 1, 90);
-      await sleep_(120);
-      busyOff_();
     }
 
     // ===== 店名読み込み =====
@@ -497,12 +286,12 @@
 
     // ===== 一覧 =====
     async function loadShiftList() {
-      refreshDateLabel_(); // 表示日の更新
+      msgEl.innerText = "出勤一覧を取得中…";
       const data = await apiJson({ action:"list", date: DISPLAY_DATE, userId: lineUserId });
       if (!data.ok) { msgEl.innerText = "一覧取得失敗\n" + (data.message || ""); return; }
 
       renderTable(data.items || []);
-      msgEl.innerText = (data.items && data.items.length) ? "一覧を更新しました" : "出勤者がいません";
+      msgEl.innerText = (data.items && data.items.length) ? "一覧を表示しました" : "出勤者がいません";
     }
 
     function renderTable(items) {
@@ -545,34 +334,28 @@
           onClick = `onclick="confirmWork('${staffCode}')"`
         }
 
-const manualTag = isManual ? `<span class="tagManual">臨時</span>` : "";
+        const manualTag = isManual ? `<span class="tagManual">臨時</span>` : "";
 
-const disabledAttr = (confirmed || !canConfirm)
-  ? 'disabled="disabled"'
-  : '';
-
-html += `
-  <tr>
-    <td>${store}${manualTag}</td>
-    <td>${startAt}</td>
-    <td>${name}</td>
-    <td>
-      <button class="btnBase btnSmall ${btnClass}" ${disabledAttr} ${onClick}>
-        ${btnText}
-      </button>
-    </td>
-  </tr>
-`;
-
+        html += `
+          <tr>
+            <td>${store}${manualTag}</td>
+            <td>${startAt}</td>
+            <td>${name}</td>
+            <td>
+              <button class="btnBase btnSmall ${btnClass}" ${disabled} ${onClick}>
+                ${btnText}
+              </button>
+            </td>
+          </tr>
+        `;
+      }
 
       html += "</tbody></table>";
       tableWrap.innerHTML = html;
     }
 
     async function confirmWork(staffCode) {
-      if (busyLock) return;
-      busyOn_("確認中…", "出勤確認を送信しています", 1, 3, 30);
-
+      msgEl.innerText = "確認中…";
       const data = await apiJson({
         action: "confirm",
         date: DISPLAY_DATE,
@@ -580,34 +363,20 @@ html += `
         userId: lineUserId,
         displayName: lineDisplayName
       });
-
-      busyOn_("確認中…", "一覧を再読み込みしています", 2, 3, 70);
-      await loadShiftList();
-
-      busyOn_("完了", "表示を更新しています", 3, 3, 95);
-      await sleep_(120);
-      busyOff_();
-
       msgEl.innerText = data.ok ? "確認OK" : ("NG: " + (data.message || "不明なエラー"));
+      await loadShiftList();
     }
 
-    // ===== 臨時（手入力） =====
+    // ===== 臨時（手入力）：確認 → モーダル → 登録 =====
     async function manualCheck() {
-      if (busyLock) return;
       msgEl.innerText = "";
-
       const staffCode = manualStaffCodeEl.value.trim();
       const store = manualStoreEl.value.trim();
 
       if (!/^\d+$/.test(staffCode)) { msgEl.innerText = "スタッフコードは半角数字で入力してください"; return; }
       if (!store) { msgEl.innerText = "店名を選んでください"; return; }
 
-      busyOn_("確認中…", "スタッフコードを照合しています", 1, 2, 35);
       const data = await apiJson({ action:"lookupStaff", staffCode });
-      busyOn_("確認中…", "結果を反映しています", 2, 2, 80);
-      await sleep_(80);
-      busyOff_();
-
       if (!data.ok) { msgEl.innerText = data.message || "無効な番号です"; return; }
 
       manualCandidateCode = staffCode;
@@ -620,13 +389,14 @@ html += `
       overlayManual.style.display = "flex";
     }
 
-    function manualClose() { overlayManual.style.display = "none"; }
+    function manualClose() {
+      overlayManual.style.display = "none";
+    }
 
     async function manualDo() {
-      if (busyLock) return;
       manualMsg.textContent = "";
+      manualBtnEl.disabled = true;
 
-      busyOn_("登録中…", "臨時登録を保存しています", 1, 3, 35);
       const data = await apiJson({
         action:"manualAdd",
         date: DISPLAY_DATE,
@@ -636,23 +406,18 @@ html += `
         displayName: lineDisplayName
       });
 
+      manualBtnEl.disabled = false;
+
       if (!data.ok) {
-        busyOff_();
         manualMsg.textContent = data.message || "登録に失敗しました";
         return;
       }
 
-      busyOn_("登録中…", "一覧を再読み込みしています", 2, 3, 75);
       overlayManual.style.display = "none";
       manualStaffCodeEl.value = "";
       manualStoreEl.value = "";
-      await loadShiftList();
-
-      busyOn_("完了", "表示を更新しています", 3, 3, 95);
-      await sleep_(120);
-      busyOff_();
-
       msgEl.innerText = "臨時登録OK";
+      await loadShiftList();
     }
 
     function esc(str) {
