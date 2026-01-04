@@ -395,6 +395,13 @@
 
     // ===== 初回登録 =====
     function openRegisterModal() {
+
+      
+        // ★強制解除（ここ追加）
+  try { busyOff_(); } catch(e) {}
+  busyLock = false;
+
+      
       overlayReg.style.display = "flex";
       regStep1.classList.remove("hide");
       regStep2.classList.add("hide");
@@ -529,21 +536,25 @@
           onClick = `onclick="confirmWork('${staffCode}')"`
         }
 
-        const manualTag = isManual ? `<span class="tagManual">臨時</span>` : "";
+const manualTag = isManual ? `<span class="tagManual">臨時</span>` : "";
 
-        html += `
-          <tr>
-            <td>${store}${manualTag}</td>
-            <td>${startAt}</td>
-            <td>${name}</td>
-            <td>
-              <button class="btnBase btnSmall ${btnClass}" ${disabled} ${onClick}>
-                ${btnText}
-              </button>
-            </td>
-          </tr>
-        `;
-      }
+const disabledAttr = (confirmed || !canConfirm)
+  ? 'disabled="disabled"'
+  : '';
+
+html += `
+  <tr>
+    <td>${store}${manualTag}</td>
+    <td>${startAt}</td>
+    <td>${name}</td>
+    <td>
+      <button class="btnBase btnSmall ${btnClass}" ${disabledAttr} ${onClick}>
+        ${btnText}
+      </button>
+    </td>
+  </tr>
+`;
+
 
       html += "</tbody></table>";
       tableWrap.innerHTML = html;
