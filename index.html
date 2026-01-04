@@ -1,67 +1,505 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>出勤一覧</title>
   <style>
-    body { font-family: system-ui,-apple-system,"Noto Sans JP",sans-serif; margin:0; background:#f7f7f7; }
-    .wrap { min-height: 100vh; display:flex; align-items:flex-start; justify-content:center; padding: 18px; }
-    .card { width:100%; max-width:520px; background:#fff; border-radius:14px; box-shadow:0 10px 28px rgba(0,0,0,.10); padding:16px; }
-    h1 { margin:0 0 8px; text-align:center; font-size:20px; }
-    .sub { color:#666; font-size:13px; text-align:center; white-space:pre-wrap; }
-    .btn { display:block; width:100%; margin-top:12px; padding:12px 14px; border:none; border-radius:12px; background:#06c755; color:#fff; font-weight:900; font-size:16px; }
-    .mini { margin-top:10px; font-size:12px; color:#888; text-align:center; }
+    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; background:#f7f7f7; padding:14px; }
+    .card { background:#fff; padding:14px; border-radius:12px; max-width: 980px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+    h1 { margin: 0 0 10px; font-size: 20px; text-align:center; }
+    .sub { font-size: 12px; color:#666; text-align:center; margin-bottom: 8px; white-space: pre-wrap; }
+
+    .row { display:flex; gap:8px; justify-content:center; flex-wrap: wrap; margin: 10px 0; }
+    .pill { display:inline-block; background:#f2f2f2; padding:4px 10px; border-radius:999px; font-size:12px; color:#333; }
+
+    .btn { padding: 10px 12px; border: none; border-radius: 10px; color:#fff; font-weight: 900; cursor:pointer; }
+    .btnGreen { background:#2e7d32; }
+    .btnGray { background:#9e9e9e; cursor:not-allowed; }
+    .btnBlue { background:#1976d2; }
+    .btnRed { background:#d32f2f; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; font-size: 14px; vertical-align: top; }
+    th { color:#555; font-weight:900; background:#fafafa; position: sticky; top: 0; }
+
+    .msg { margin-top: 10px; text-align:center; white-space: pre-wrap; font-size: 14px; color:#333; }
+    .err { color:#d32f2f; font-weight: 900; }
+
+    /* ===== 登録フォーム ===== */
+    .regBox{ margin-top: 14px; padding: 12px; border:1px solid #eee; border-radius:12px; background:#fafafa; }
+    .regTitle{ font-weight: 900; text-align:center; margin-bottom: 8px; }
+    .input { width:100%; padding:12px; border-radius:10px; border:1px solid #ddd; font-size:16px; box-sizing:border-box; }
+    .regBtnRow{ display:flex; justify-content:center; margin-top: 10px; }
+
+    /* ===== 処理中オーバーレイ ===== */
+    .busyOverlay{
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9998;
+      padding: 16px;
+    }
+    .busyBox{
+      width: 100%;
+      max-width: 520px;
+      background: #fff;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    }
+    .busyTop{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom: 10px;
+    }
+    .spinner{
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 3px solid #ddd;
+      border-top-color: #06c755;
+      animation: spin 0.9s linear infinite;
+      flex: 0 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .busyTitle{ font-weight: 900; font-size: 15px; }
+    .busyText{ font-size: 13px; color:#555; white-space: pre-wrap; }
+
+    .barWrap{
+      margin-top: 12px;
+      background: #eee;
+      border-radius: 999px;
+      overflow: hidden;
+      height: 10px;
+    }
+    .bar{
+      height: 10px;
+      width: 0%;
+      background: #06c755;
+      transition: width .25s ease;
+    }
+    .barMeta{
+      display:flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color:#666;
+      margin-top: 6px;
+    }
+
+    pre#debug {
+      background:#111; color:#eee; padding:10px; border-radius:10px;
+      font-size:12px; white-space:pre-wrap; margin-top: 12px;
+      display:none;
+    }
+    .center{ text-align:center; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>出勤一覧</h1>
-      <div class="sub" id="msg">LINEで起動しています…</div>
-      <button class="btn" id="openBtn" style="display:none;">LINEで開く</button>
-      <div class="mini" id="mini"></div>
+  <div class="card">
+    <h1>出勤一覧</h1>
+
+    <div class="sub" id="who">読み込み中…</div>
+    <div class="sub"><span class="pill" id="dateLabel"></span></div>
+
+    <div class="row">
+      <button class="btn btnBlue" id="reloadBtn">再読み込み</button>
+      <button class="btn btnGray" id="toggleDebugBtn">デバッグ表示</button>
+    </div>
+
+    <!-- 登録フォーム（未登録の時だけ表示） -->
+    <div class="regBox" id="regBox" style="display:none;">
+      <div class="regTitle">スタッフ登録</div>
+      <div class="sub center">スタッフコードを入力してください</div>
+      <input class="input" id="staffCodeInput" inputmode="numeric" placeholder="例：10277" />
+      <div class="regBtnRow">
+        <button class="btn btnGreen" id="registerBtn">登録する</button>
+      </div>
+    </div>
+
+    <div id="tableWrap"></div>
+    <div class="msg" id="msg"></div>
+    <pre id="debug"></pre>
+  </div>
+
+  <!-- 処理中 -->
+  <div class="busyOverlay" id="busyOverlay">
+    <div class="busyBox">
+      <div class="busyTop">
+        <div class="spinner"></div>
+        <div>
+          <div class="busyTitle" id="busyTitle">処理中…</div>
+          <div class="busyText" id="busyText">少しだけお待ちください</div>
+        </div>
+      </div>
+      <div class="barWrap"><div class="bar" id="busyBar"></div></div>
+      <div class="barMeta">
+        <div id="busyPct">0%</div>
+        <div id="busyStep">1/3</div>
+      </div>
     </div>
   </div>
 
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-    // ===== 変数名そのまま =====
+    // ===== 固定（変数名はそのまま） =====
     const LIFF_ID = "2008802899-oJWsorEf";
-    const LIFF_URL = "https://liff.line.me/2008802899-oJWsorEf";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-    const msg = document.getElementById("msg");
-    const mini = document.getElementById("mini");
-    const openBtn = document.getElementById("openBtn");
+    // ===== 画面要素 =====
+    const whoEl = document.getElementById("who");
+    const msgEl = document.getElementById("msg");
+    const tableWrap = document.getElementById("tableWrap");
+    const dateLabel = document.getElementById("dateLabel");
+    const debugEl = document.getElementById("debug");
 
-    function showFallback(text){
-      msg.textContent = text || "自動で開けない場合は、下のボタンを押してください。";
-      openBtn.style.display = "block";
+    const busyOverlay = document.getElementById("busyOverlay");
+    const busyTitle = document.getElementById("busyTitle");
+    const busyText  = document.getElementById("busyText");
+    const busyBar   = document.getElementById("busyBar");
+    const busyPct   = document.getElementById("busyPct");
+    const busyStep  = document.getElementById("busyStep");
+
+    const reloadBtn = document.getElementById("reloadBtn");
+    const toggleDebugBtn = document.getElementById("toggleDebugBtn");
+
+    const regBox = document.getElementById("regBox");
+    const staffCodeInput = document.getElementById("staffCodeInput");
+    const registerBtn = document.getElementById("registerBtn");
+
+    let lineUserId = "";
+    let lineDisplayName = "";
+    let busyLock = false;
+
+    // ここが「自分情報」
+    let me = { ok:false, registered:false, staffCode:"", name:"" };
+
+    // ===== デバッグ =====
+    function logDebug(text){ debugEl.textContent += text + "\n"; }
+    function showError(title, detail){
+      msgEl.innerText = title + "\n" + (detail || "");
+      msgEl.classList.add("err");
+      logDebug("[ERROR] " + title + " | " + (detail || ""));
     }
+    window.onerror = function(message, source, lineno, colno){
+      showError("JSエラー", message + " @" + lineno + ":" + colno);
+    };
 
-    openBtn.addEventListener("click", () => {
-      location.href = LIFF_URL;
+    toggleDebugBtn.addEventListener("click", () => {
+      const isOpen = debugEl.style.display === "block";
+      debugEl.style.display = isOpen ? "none" : "block";
+      toggleDebugBtn.className = "btn " + (isOpen ? "btnGray" : "btnGreen");
     });
 
-    (function main(){
-      // ★無限ループ防止：1回飛んだら同セッションではもう飛ばさない
-      const key = "liff_redirect_done";
-      const already = sessionStorage.getItem(key) === "1";
+    reloadBtn.addEventListener("click", async () => { await loadAll(); });
 
-      // ボタンを先に出す（遷移ブロックされた時の保険）
-      setTimeout(() => {
-        showFallback("自動で開けない場合は、下のボタンを押してください。");
-      }, 1200);
+    // ===== JSTの今日 =====
+    function getTodayKeyJst(){
+      const parts = new Intl.DateTimeFormat("ja-JP", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric", month: "2-digit", day: "2-digit"
+      }).formatToParts(new Date());
+      const y = parts.find(p => p.type === "year").value;
+      const m = parts.find(p => p.type === "month").value;
+      const d = parts.find(p => p.type === "day").value;
+      return `${y}-${m}-${d}`;
+    }
+    function refreshDateLabel(){
+      const today = getTodayKeyJst();
+      dateLabel.innerText = `表示日：${today}`;
+      return today;
+    }
 
-      if (!already){
-        sessionStorage.setItem(key, "1");
-        // ★replace：戻るで戻ってもまた飛ばない（戻る無限ループ防止）
-        location.replace(LIFF_URL);
-        mini.textContent = "redirect → " + LIFF_URL;
-      } else {
-        showFallback("LINEで開く準備ができました。");
-        mini.textContent = "redirect skipped (already done)";
+    // ===== 処理中UI =====
+    function busyOn(title, text, step, totalSteps, pct){
+      busyOverlay.style.display = "flex";
+      busyTitle.textContent = title || "処理中…";
+      busyText.textContent = text || "少しだけお待ちください";
+      const p = Math.max(0, Math.min(100, pct || 0));
+      busyBar.style.width = p + "%";
+      busyPct.textContent = p + "%";
+      busyStep.textContent = `${step || 1}/${totalSteps || 1}`;
+      busyLock = true;
+      reloadBtn.disabled = true;
+      reloadBtn.className = "btn btnGray";
+      registerBtn.disabled = true;
+      registerBtn.className = "btn btnGray";
+    }
+    function busyOff(){
+      busyOverlay.style.display = "none";
+      busyBar.style.width = "0%";
+      busyPct.textContent = "0%";
+      busyStep.textContent = "1/1";
+      busyLock = false;
+      reloadBtn.disabled = false;
+      reloadBtn.className = "btn btnBlue";
+      registerBtn.disabled = false;
+      registerBtn.className = "btn btnGreen";
+    }
+
+    // ===== JSONP（CORS回避） =====
+    function apiJson(params) {
+      return new Promise((resolve, reject) => {
+        const cbName = "cb" + Date.now() + Math.floor(Math.random()*1000);
+        let script = null;
+
+        window[cbName] = (data) => {
+          try { delete window[cbName]; } catch(e){}
+          if (script) script.remove();
+          resolve(data);
+        };
+
+        const qs = new URLSearchParams();
+        Object.entries(params).forEach(([k,v]) => qs.append(k, v));
+        qs.append("callback", cbName);
+        qs.append("cb", String(Date.now()));
+
+        script = document.createElement("script");
+        script.src = GAS_URL + "?" + qs.toString();
+        script.onerror = () => {
+          try { delete window[cbName]; } catch(e){}
+          if (script) script.remove();
+          reject(new Error("通信失敗（GASが返してない/URLが違う可能性）"));
+        };
+
+        document.body.appendChild(script);
+      });
+    }
+
+    // ===== 表 =====
+    function renderTable(items){
+      if (!items || !items.length){
+        tableWrap.innerHTML = "";
+        return;
       }
-    })();
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 32%;">店名</th>
+              <th style="width: 30%;">開始日時</th>
+              <th style="width: 20%;">名前</th>
+              <th style="width: 18%;">確認</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      const myStaffCode = String(me.staffCode || ""); // ← trim事故防止（数字でもOK）
+
+      for (const it of items){
+        const store = esc(it.store || "");
+        const startAt = esc(it.startAt || "");
+        const name = esc(it.name || "");
+        const staffCode = String(it.staffCode || "");
+        const confirmed = !!it.confirmed;
+
+        const isMe = (staffCode && myStaffCode && staffCode === myStaffCode);
+
+        // ボタンは「全員分」表示（他人は押せない）
+        let btnHtml = "";
+        if (confirmed){
+          btnHtml = `<button class="btn btnGray" disabled>確認済</button>`;
+        } else if (isMe){
+          btnHtml = `<button class="btn btnRed" data-staff="${esc(staffCode)}">出勤確認</button>`;
+        } else {
+          btnHtml = `<button class="btn btnGray" disabled>未確認</button>`;
+        }
+
+        html += `
+          <tr>
+            <td>${store}</td>
+            <td>${startAt}</td>
+            <td>${name}</td>
+            <td>${btnHtml}</td>
+          </tr>
+        `;
+      }
+
+      html += "</tbody></table>";
+      tableWrap.innerHTML = html;
+
+      // 自分の「出勤確認」だけ動く
+      tableWrap.querySelectorAll("button[data-staff]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const staff = btn.getAttribute("data-staff") || "";
+          await doConfirm(staff);
+        });
+      });
+    }
+
+    function esc(str){
+      return String(str).replace(/[&<>"']/g, s => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[s]));
+    }
+
+    // ===== 登録UI =====
+    function showRegister(){
+      regBox.style.display = "block";
+      tableWrap.innerHTML = "";
+    }
+    function hideRegister(){
+      regBox.style.display = "none";
+      staffCodeInput.value = "";
+    }
+
+    registerBtn.addEventListener("click", async () => {
+      if (busyLock) return;
+      const code = String(staffCodeInput.value || "").trim();
+      if (!code){
+        showError("スタッフコードを入力してください", "");
+        return;
+      }
+
+      try{
+        msgEl.classList.remove("err");
+        msgEl.innerText = "";
+        busyOn("登録中…", "スタッフ情報を登録しています", 1, 1, 40);
+
+        const res = await apiJson({ action:"register", userId: lineUserId, staffCode: code });
+
+        if (!res || !res.ok){
+          busyOff();
+          showError("登録できません", (res && res.message) ? res.message : "不明");
+          return;
+        }
+
+        busyOn("登録完了", "一覧を読み込みます", 1, 1, 80);
+        await loadAll(); // 登録後すぐ一覧へ
+        busyOff();
+
+      } catch(err){
+        busyOff();
+        showError("登録失敗", (err && err.message) ? err.message : String(err));
+      }
+    });
+
+    // ===== 出勤確認 =====
+    async function doConfirm(staffCode){
+      if (busyLock) return;
+
+      const today = getTodayKeyJst();
+
+      try{
+        msgEl.classList.remove("err");
+        msgEl.innerText = "";
+        busyOn("送信中…", "出勤確認を登録しています", 1, 1, 40);
+
+        const res = await apiJson({ action:"confirm", date: today, userId: lineUserId, staffCode: String(staffCode || "") });
+
+        if (!res || !res.ok){
+          busyOff();
+          showError("確認できません", (res && res.message) ? res.message : "不明");
+          return;
+        }
+
+        busyOn("更新中…", "一覧を更新しています", 1, 1, 80);
+        await loadAll();
+        busyOff();
+
+      } catch(err){
+        busyOff();
+        showError("確認失敗", (err && err.message) ? err.message : String(err));
+      }
+    }
+
+    // ===== メイン =====
+    async function loadAll(){
+      if (busyLock) return;
+
+      msgEl.classList.remove("err");
+      msgEl.innerText = "";
+      debugEl.textContent = "";
+      logDebug("GAS_URL=" + GAS_URL);
+
+      const today = refreshDateLabel();
+
+      try {
+        busyOn("起動中…", "LINE情報を確認しています", 1, 3, 20);
+
+        if (!window.liff){
+          busyOff();
+          showError("LIFFが読み込めません", "LINEアプリ内で開いてください");
+          return;
+        }
+
+        await liff.init({ liffId: LIFF_ID });
+
+        // ★運用は「LINEアプリ内」が前提（ここで止める）
+        if (!liff.isInClient()){
+          busyOff();
+          showError("LINEアプリ内で開いてください", "このページはLINEアプリ内で開いた時だけ使えます。");
+          return;
+        }
+
+        if (!liff.isLoggedIn()){
+          whoEl.innerText = "LINEログインが必要です（ログインに進みます）";
+          liff.login();
+          return;
+        }
+
+        const profile = await liff.getProfile();
+        lineUserId = profile.userId || "";
+        lineDisplayName = profile.displayName || "";
+        whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
+        logDebug("userId=" + lineUserId);
+
+        // ===== 自分が登録済みか確認 =====
+        busyOn("確認中…", "登録状況を確認しています", 2, 3, 50);
+
+        me = await apiJson({ action:"me", userId: lineUserId });
+
+        logDebug("me=" + JSON.stringify(me || {}));
+
+        if (!me || !me.ok){
+          busyOff();
+          showError("読み込み失敗", (me && me.message) ? me.message : "meが取得できません");
+          return;
+        }
+
+        if (!me.registered){
+          // 未登録 → 登録フォーム
+          showRegister();
+          msgEl.innerText = "スタッフコードを登録してください";
+          busyOff();
+          return;
+        }
+
+        // 登録済 → 一覧
+        hideRegister();
+
+        busyOn("読み込み中…", "本日の出勤一覧を取得しています", 3, 3, 75);
+
+        const data = await apiJson({ action:"list", date: today, userId: lineUserId });
+
+        if (!data){
+          busyOff();
+          showError("通信失敗", "data が undefined です（GASが返していません）");
+          return;
+        }
+        if (!data.ok){
+          busyOff();
+          showError("NG", data.message || "不明");
+          return;
+        }
+
+        renderTable(data.items || []);
+        msgEl.innerText = (data.items && data.items.length) ? "一覧を更新しました" : "出勤者がいません";
+        busyOff();
+
+      } catch (err){
+        busyOff();
+        showError("読み込み失敗", (err && err.message) ? err.message : String(err));
+      }
+    }
+
+    // 初回
+    refreshDateLabel();
+    loadAll();
   </script>
 </body>
 </html>
