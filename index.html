@@ -397,20 +397,29 @@
     function openRegisterModal() {
 
       
-        // ★強制解除（ここ追加）
+       function openRegisterModal() {
+  // ★処理中ロックを強制解除
   try { busyOff_(); } catch(e) {}
   busyLock = false;
 
+  // ★登録モーダル内ボタンだけは確実に押せる状態に戻す
+  const regBtns = document.querySelectorAll("#overlayReg button");
+  regBtns.forEach(b => {
+    b.disabled = false;
+    delete b.dataset.prevDisabled;
+  });
+
+  overlayReg.style.display = "flex";
+  regStep1.classList.remove("hide");
+  regStep2.classList.add("hide");
+  regMsg1.textContent = "";
+  regMsg2.textContent = "";
+  regStaffCodeEl.value = "";
+  regCandidateCode = "";
+  regCandidateName = "";
+}
+
       
-      overlayReg.style.display = "flex";
-      regStep1.classList.remove("hide");
-      regStep2.classList.add("hide");
-      regMsg1.textContent = "";
-      regMsg2.textContent = "";
-      regStaffCodeEl.value = "";
-      regCandidateCode = "";
-      regCandidateName = "";
-    }
     function closeRegisterModal() { overlayReg.style.display = "none"; }
     function regBack() {
       regStep2.classList.add("hide");
