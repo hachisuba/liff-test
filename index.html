@@ -1,37 +1,22 @@
 <!DOCTYPE html>
 <html>
-<head>
-<meta charset="utf-8">
-<title>出勤確認</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
+<head><meta charset="utf-8"><title>出勤一覧</title></head>
 <body>
-<h2>出勤確認</h2>
-<input id="staffCode" placeholder="スタッフコード">
-<button onclick="send()">出勤しました</button>
-<pre id="msg"></pre>
+<h2>本日の出勤一覧</h2>
+<div id="list"></div>
 
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
-const LIFF_ID = "2008802899-oJWsorEf";
-const GAS_URL = "【最新の /exec を必ず入れる】";
+const GAS_URL = "【上と同じ /exec】";
 
-let userId="", name="";
-
-liff.init({liffId:LIFF_ID}).then(async ()=>{
-  if(!liff.isLoggedIn()){ liff.login(); return; }
-  const p = await liff.getProfile();
-  userId=p.userId; name=p.displayName;
+fetch(GAS_URL,{
+  method:"POST",
+  headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+  body:`action=list&date=${new Date().toISOString().slice(0,10)}&userId=dummy`
+})
+.then(r=>r.json())
+.then(d=>{
+  document.getElementById("list").innerText=JSON.stringify(d.items,null,2);
 });
-
-function send(){
-  const code=document.getElementById("staffCode").value;
-  fetch(GAS_URL,{
-    method:"POST",
-    headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-    body:`action=confirm&date=${new Date().toISOString().slice(0,10)}&staffCode=${code}&userId=${userId}&displayName=${name}`
-  }).then(r=>r.text()).then(t=>msg.textContent=t);
-}
 </script>
 </body>
 </html>
