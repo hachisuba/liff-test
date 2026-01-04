@@ -5,50 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>出勤一覧</title>
   <style>
-    body{ font-family: system-ui,-apple-system,"Noto Sans JP",sans-serif; background:#f7f7f7; padding:14px; }
-    .card{ background:#fff; padding:14px; border-radius:12px; max-width:720px; margin:0 auto; box-shadow:0 4px 10px rgba(0,0,0,.08); }
-    h1{ margin:0 0 10px; font-size:20px; text-align:center; }
+    body{ font-family: system-ui,-apple-system,"Noto Sans JP",sans-serif; background:#f7f7f7; padding:18px; }
+    .card{ background:#fff; padding:16px; border-radius:12px; max-width:720px; margin:0 auto; box-shadow:0 4px 10px rgba(0,0,0,.08); text-align:center; }
+    h1{ margin:0 0 8px; font-size:20px; }
     .p{ color:#444; font-size:14px; line-height:1.6; }
-    .btn{ display:block; width:100%; padding:12px 12px; border:none; border-radius:10px; color:#fff; font-weight:900; cursor:pointer; margin-top:10px; }
-    .btnBlue{ background:#1976d2; }
-    .btnGreen{ background:#2e7d32; }
-    .pill{ display:inline-block; background:#f2f2f2; padding:4px 10px; border-radius:999px; font-size:12px; color:#333; }
-    .sub{ text-align:center; margin-top:8px; color:#666; font-size:12px; white-space:pre-wrap; }
+    .hint{ margin-top:10px; color:#666; font-size:12px; white-space:pre-wrap; }
+    .btn{ margin-top:12px; display:inline-block; padding:12px 14px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:900; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>出勤一覧</h1>
-    <div class="sub"><span class="pill">このページは入口です</span></div>
-
-    <p class="p">
-      本番は <b>LINE（LIFF）内</b>で開くのが一番安定します。<br>
-      下のボタンから「GASの画面」を開いてください。
-    </p>
-
-    <button class="btn btnGreen" id="openGAS">GASの出勤一覧を開く</button>
-    <button class="btn btnBlue" id="copyUrl">GAS URL をコピー</button>
-
-    <div class="sub" id="msg"></div>
+    <p class="p">LINEで開きます…</p>
+    <a class="btn" id="open" href="#">LINEで開く</a>
+    <div class="hint" id="hint"></div>
   </div>
 
   <script>
-    // ===== 固定（あなたの指定どおり） =====
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
+    // 固定（そのまま）
+    const LIFF_ID = "2008802899-oJWsorEf";
+    const LIFF_URL = "https://liff.line.me/" + LIFF_ID;
 
-    const msg = document.getElementById("msg");
-    document.getElementById("openGAS").addEventListener("click", () => {
-      location.href = GAS_URL;
-    });
+    const a = document.getElementById("open");
+    a.href = LIFF_URL;
 
-    document.getElementById("copyUrl").addEventListener("click", async () => {
-      try{
-        await navigator.clipboard.writeText(GAS_URL);
-        msg.textContent = "コピーしました";
-      }catch(e){
-        msg.textContent = "コピーできませんでした（手動でコピーしてください）\n" + GAS_URL;
-      }
-    });
+    // 自動遷移（ブラウザが止めたらボタンで）
+    setTimeout(() => {
+      location.href = LIFF_URL;
+      document.getElementById("hint").textContent =
+        "自動で開かない場合は、上のボタンを押してください。";
+    }, 300);
   </script>
 </body>
 </html>
