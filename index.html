@@ -4,19 +4,33 @@
 <body>
 <h2>本日の出勤一覧</h2>
 <div id="list"></div>
-
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-fetch(GAS_URL,{
-  method:"POST",
-  headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-  body:`action=list&date=${new Date().toISOString().slice(0,10)}&userId=dummy`
-})
-.then(r=>r.json())
-.then(d=>{
-  document.getElementById("list").innerText=JSON.stringify(d.items,null,2);
-});
+function apiJson(params) {
+  return new Promise((resolve, reject) => {
+    const cbName = "cb" + Date.now() + Math.floor(Math.random()*1000);
+
+    window[cbName] = (data) => {
+      delete window[cbName];
+      script.remove();
+      resolve(data);
+    };
+
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k,v]) => qs.append(k, v));
+    qs.append("callback", cbName);
+    qs.append("cb", String(Date.now()));
+
+    const script = document.createElement("script");
+    script.src = GAS_URL + "?" + qs.toString();
+    script.onerror = () => {
+      delete window[cbName];
+      script.remove();
+      reject(new Error("JSONP通信失敗"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
 </script>
-</body>
-</html>
