@@ -1,399 +1,189 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>出勤確認</title>
   <style>
-    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; background:#f7f7f7; padding:16px; }
-    .card { background:#fff; border-radius:14px; padding:14px; max-width:520px; margin:0 auto; box-shadow:0 6px 16px rgba(0,0,0,.08); }
-    h1 { font-size:18px; margin:6px 0 10px; text-align:center; }
-    .sub { font-size:12px; color:#666; text-align:center; margin:0 0 10px; }
-    .row { display:flex; gap:8px; align-items:center; }
-    .row > * { flex:1; }
-    input, select, button { width:100%; padding:12px; font-size:16px; border-radius:10px; border:1px solid #ddd; box-sizing:border-box; }
-    button { background:#06c755; color:#fff; border:none; font-weight:700; }
-    button.secondary { background:#f2f2f2; color:#333; border:1px solid #ddd; }
-    button:disabled { opacity:.45; }
-    .msg { margin-top:12px; font-size:13px; white-space:pre-wrap; }
-    .hr { height:1px; background:#eee; margin:14px 0; }
-    .ttl { font-weight:800; margin:10px 0 8px; }
-    .timeover { display:none; color:#d32f2f; font-weight:800; margin:6px 0 10px; }
-    .list { display:grid; gap:8px; }
-    .item { border:1px solid #eee; border-radius:12px; padding:10px; background:#fff; }
-    .item .top { display:flex; justify-content:space-between; gap:8px; }
-    .badge { font-size:12px; padding:2px 8px; border-radius:999px; background:#f3f3f3; color:#333; }
-    .badge.ok { background:#e8f5e9; color:#1b5e20; }
-    .badge.ng { background:#ffebee; color:#b71c1c; }
-    .small { font-size:12px; color:#666; margin-top:6px; }
-    .btnLine { margin-top:8px; }
-    .muted { color:#888; }
+    body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; margin: 14px; background:#fafafa; }
+    .card { background:#fff; border:1px solid #e5e5e5; border-radius:14px; padding:14px; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+    h1 { font-size:18px; margin:0 0 10px; }
+    .row { display:grid; gap:10px; }
+    .btns { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+    input { width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; font-size:16px; }
+    button { width:100%; padding:12px; border-radius:12px; border:0; font-size:16px; font-weight:700; cursor:pointer; }
+    .primary { background:#111; color:#fff; }
+    .ghost { background:#eee; color:#333; }
+    .ghost[disabled] { opacity:.4; cursor:not-allowed; }
+    .msg { margin-top:10px; font-size:14px; white-space:pre-line; }
+    .ok { color:#0a7a2f; }
+    .ng { color:#b00020; }
+    .meta { font-size:12px; color:#666; margin-top:8px; }
 
-    /* modal */
-    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:14px; }
-    .modal { background:#fff; border-radius:14px; width:min(520px, 100%); padding:14px; }
-    .modal h2 { font-size:16px; margin:0 0 10px; }
-    .modal .actions { display:grid; gap:10px; margin-top:12px; }
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:999; }
+    .modal { width:min(380px, 92vw); background:#fff; border-radius:16px; padding:14px; }
+    .spinner { width:20px; height:20px; border:3px solid #ddd; border-top:3px solid #111; border-radius:999px; animation: spin 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .bar { height:10px; background:#eee; border-radius:999px; overflow:hidden; margin-top:10px; }
+    .bar > div { height:100%; width:0%; background:#111; transition: width .2s; }
+    .small { font-size:12px; color:#666; margin-top:6px; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>出勤確認</h1>
 
-    <div class="sub" id="who">読み込み中…</div>
+    <div class="row">
+      <div>
+        <div class="small">スタッフコード</div>
+        <input id="staffCode" placeholder="例：U1234 / 1234" autocomplete="off" />
+      </div>
 
-    <div class="timeover" id="timeOverMsg">現在、確認有効時間が過ぎているためボタン無効</div>
+      <div>
+        <div class="small">店舗（任意）</div>
+        <input id="store" placeholder="例：マルハン千葉北店" autocomplete="off" />
+      </div>
+    </div>
 
-    <div class="ttl">本日出勤リスト（確定のみ）</div>
-    <div class="list" id="list"></div>
+    <div class="btns">
+      <button id="backBtn" class="ghost" disabled>戻る</button>
+      <button id="sendBtn" class="primary">登録</button>
+    </div>
 
-    <div class="hr"></div>
-
-    <div class="ttl">臨時（手入力）</div>
-    <div class="small muted">※ shiftには書きません。confirmに「臨時」で記録します。</div>
-    <input id="manualStaffCode" placeholder="スタッフコード（半角数字）" inputmode="numeric" />
-    <select id="manualStore">
-      <option value="">店名を選択</option>
-    </select>
-    <button class="btnLine" id="btnManual" onclick="manualAdd()">確認</button>
-
-    <div class="msg" id="msg"></div>
+    <div id="msg" class="msg"></div>
+    <div id="meta" class="meta"></div>
   </div>
 
-  <!-- 登録モーダル -->
-  <div class="overlay" id="regOverlay">
+  <div id="overlay" class="overlay">
     <div class="modal">
-      <h2>確認</h2>
-      <div id="regText" class="msg"></div>
-      <div class="actions">
-        <!-- ✅ 戻るは busy でも押せる（disabledにしない） -->
-        <button class="secondary" id="btnRegBack" onclick="closeRegModal()">戻る</button>
-        <button id="btnRegOk" onclick="registerDo()">登録</button>
-      </div>
+      <div><span class="spinner"></span><span id="loadingText">処理中…</span></div>
+      <div class="bar"><div id="bar"></div></div>
+      <div id="pct" class="small">0%</div>
     </div>
   </div>
 
-  <!-- LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+  // ★ここを差し替え（GASの「ウェブアプリURL」）
+  // 例：https://script.google.com/macros/s/XXXXXXXXXXXX/exec
+  const GAS_WEBAPP_URL = "【ここにGASのWebアプリURL】";
 
-  <script>
-    // ★あなたのLIFF ID
-    const LIFF_ID = "2008802899-oJWsorEf";
+  const elStaff = document.getElementById("staffCode");
+  const elStore = document.getElementById("store");
+  const elMsg   = document.getElementById("msg");
+  const elMeta  = document.getElementById("meta");
+  const backBtn = document.getElementById("backBtn");
+  const sendBtn = document.getElementById("sendBtn");
+  const overlay = document.getElementById("overlay");
+  const bar = document.getElementById("bar");
+  const pct = document.getElementById("pct");
+  const loadingText = document.getElementById("loadingText");
 
-    // ★あなたのGAS（/exec）
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
+  let historyStack = [];
 
-    let lineUserId = "";
-    let lineDisplayName = "";
+  function setMsg(text, ok) {
+    elMsg.textContent = text || "";
+    elMsg.className = "msg " + (ok ? "ok" : "ng");
+  }
+  function setMeta(text) {
+    elMeta.textContent = text || "";
+  }
 
-    const whoEl = document.getElementById("who");
-    const msgEl = document.getElementById("msg");
-    const listEl = document.getElementById("list");
-    const timeOverEl = document.getElementById("timeOverMsg");
+  function startLoading(text) {
+    loadingText.textContent = text || "処理中…";
+    overlay.style.display = "flex";
+    setProgress(5);
+    sendBtn.disabled = true;
+    backBtn.disabled = historyStack.length === 0;
+  }
+  function endLoading() {
+    setProgress(100);
+    setTimeout(() => {
+      overlay.style.display = "none";
+      sendBtn.disabled = false;
+      backBtn.disabled = historyStack.length === 0;
+      setProgress(0);
+    }, 200);
+  }
+  function setProgress(p) {
+    const v = Math.max(0, Math.min(100, p));
+    bar.style.width = v + "%";
+    pct.textContent = v + "%";
+  }
 
-    const regOverlay = document.getElementById("regOverlay");
-    const regTextEl = document.getElementById("regText");
-    const btnRegOk = document.getElementById("btnRegOk");
+  function normalizeStaffCode(v){
+    return String(v || "").trim().toUpperCase(); // ★U系を絶対落とさない
+  }
 
-    const manualStaffCodeEl = document.getElementById("manualStaffCode");
-    const manualStoreEl = document.getElementById("manualStore");
-    const btnManual = document.getElementById("btnManual");
+  async function postApi(payload){
+    // ★CORSの事前リクエストを避けるため、Content-Type は text/plain で送る
+    const res = await fetch(GAS_WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  }
 
-    let busy = false;
-    let pendingRegisterStaffCode = ""; // モーダルで確定するスタッフコード
-
-    function setBusy(v) {
-      busy = !!v;
-      // ✅ “戻るボタン”は絶対に無効化しない
-      btnRegOk.disabled = busy;
-      btnManual.disabled = busy;
-      // リスト内の確認ボタンも制御
-      document.querySelectorAll("[data-confirm-btn='1']").forEach(b => b.disabled = busy || b.dataset.forceDisabled === "1");
-    }
-
-    function setTimeOverMessage(isOver) {
-      timeOverEl.style.display = isOver ? "block" : "none";
-    }
-
-    function getTodayKey() {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = ("0" + (d.getMonth() + 1)).slice(-2);
-      const day = ("0" + d.getDate()).slice(-2);
-      return `${y}-${m}-${day}`;
-    }
-
-    function startDateChangeWatcher() {
-      let lastKey = getTodayKey();
-      setInterval(() => {
-        const nowKey = getTodayKey();
-        if (nowKey !== lastKey) {
-          lastKey = nowKey;
-          setTimeOverMessage(false);
-          loadAll(nowKey);
-        }
-      }, 30 * 1000);
-    }
-
-    async function postForm(paramsObj) {
-      const params = new URLSearchParams();
-      Object.keys(paramsObj || {}).forEach(k => params.append(k, paramsObj[k]));
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-        body: params.toString(),
-      });
-      const text = await res.text();
-      // GASは json_ で返してる想定
-      try { return JSON.parse(text); } catch (_) { return { ok:false, message:text }; }
-    }
-
-    function renderList(items, timeOver) {
-      listEl.innerHTML = "";
-
-      if (!items || items.length === 0) {
-        listEl.innerHTML = `<div class="item"><div class="small muted">本日の確定シフトはありません</div></div>`;
-        return;
+  async function refreshStatus(){
+    try{
+      const r = await postApi({ action:"status" });
+      if (r && r.ok){
+        setMeta(`今日：${r.date} / 確認：${r.confirmed}/${r.total_shift} / 未確認：${r.unconfirmed} / サーバー：${r.server_time}`);
+      } else {
+        setMeta("");
       }
-
-      items.forEach(it => {
-        const div = document.createElement("div");
-        div.className = "item";
-
-        const badge = it.confirmed ? `<span class="badge ok">確認済</span>` : `<span class="badge ng">未確認</span>`;
-        const manual = it.isManual ? `<span class="badge">臨時</span>` : "";
-
-        const can = !!it.canConfirm && !timeOver;
-        const btn = can
-          ? `<button data-confirm-btn="1" onclick="confirmNormal('${escapeHtml(it.staffCode)}')">確認</button>`
-          : `<button data-confirm-btn="1" data-force-disabled="1" disabled>確認</button>`;
-
-        div.innerHTML = `
-          <div class="top">
-            <div>
-              <div><b>${escapeHtml(it.store || "")}</b></div>
-              <div class="small">${escapeHtml(it.startAt || "")} / ${escapeHtml(it.name || "")}</div>
-            </div>
-            <div style="text-align:right; display:grid; gap:6px;">
-              ${badge}
-              ${manual}
-            </div>
-          </div>
-          <div style="margin-top:10px;">${btn}</div>
-        `;
-        listEl.appendChild(div);
-      });
+    } catch(e){
+      setMeta("");
     }
+  }
 
-    function escapeHtml(s) {
-      return String(s || "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    }
+  backBtn.addEventListener("click", () => {
+    if (historyStack.length === 0) return;
+    const prev = historyStack.pop();
+    elStaff.value = prev.staffCode;
+    elStore.value = prev.store;
+    setMsg("", true);
+    backBtn.disabled = historyStack.length === 0;
+  });
 
-    async function loadStores() {
-      const j = await postForm({ action:"stores" });
-      manualStoreEl.innerHTML = `<option value="">店名を選択</option>`;
-      if (j.ok && Array.isArray(j.items)) {
-        j.items.forEach(name => {
-          const opt = document.createElement("option");
-          opt.value = name;
-          opt.textContent = name;
-          manualStoreEl.appendChild(opt);
-        });
+  sendBtn.addEventListener("click", async () => {
+    const staffCode = normalizeStaffCode(elStaff.value);
+    const store = String(elStore.value || "").trim();
+
+    if (!staffCode) { setMsg("スタッフコードを入力してください", false); return; }
+
+    historyStack.push({ staffCode, store });
+    backBtn.disabled = historyStack.length === 0;
+
+    setMsg("", true);
+    startLoading("登録しています…");
+    setProgress(20);
+
+    try{
+      const r = await postApi({ action:"confirm", staffCode, store });
+      setProgress(80);
+
+      if (r && r.ok){
+        setMsg(r.message || "OK", true);
+        await refreshStatus();
+      } else {
+        setMsg((r && r.message) ? r.message : "NG", false);
       }
+    } catch(e){
+      setMsg("ERROR: " + (e && e.message ? e.message : e), false);
+    } finally {
+      endLoading();
     }
+  });
 
-    async function loadList(dateKey) {
-      const j = await postForm({ action:"list", date:dateKey, userId:lineUserId });
-      if (!j.ok) {
-        msgEl.innerText = j.message || "一覧取得に失敗しました";
-        renderList([], false);
-        setTimeOverMessage(false);
-        return;
-      }
-      const timeOver = !!j.timeOver;
-      setTimeOverMessage(timeOver);
-      renderList(j.items || [], timeOver);
-    }
+  // 初期表示
+  setMsg("スタッフコードを入力して「登録」を押してください。", true);
 
-    async function loadMeAndMaybeRegister() {
-      const j = await postForm({ action:"me", userId: lineUserId });
-      if (!j.ok) {
-        msgEl.innerText = j.message || "状態確認に失敗しました";
-        return { registered:false };
-      }
-      if (j.registered) return { registered:true, name:j.name || "" };
-      return { registered:false };
-    }
+  // ★日付ズレ対策：ページを開いたら即 status（GAS側のJST“今日”を表示）
+  refreshStatus();
 
-    async function loadAll(dateKey) {
-      await loadStores();
-      await loadList(dateKey);
-    }
-
-    // ===== 登録フロー =====
-    // 「スタッフコード → 名前確認 → 登録」
-    async function startRegisterFlow(staffCode) {
-      setBusy(true);
-      msgEl.innerText = "";
-      try {
-        const j = await postForm({ action:"lookupStaff", staffCode:String(staffCode||"").trim() });
-        if (!j.ok) {
-          msgEl.innerText = j.message || "スタッフ確認に失敗しました";
-          return;
-        }
-        pendingRegisterStaffCode = String(staffCode||"").trim();
-        regTextEl.innerText = `あなたは、「${j.name}」さんですね？\n間違いなければ「登録」を押してください。`;
-        openRegModal();
-      } catch (e) {
-        msgEl.innerText = "エラー:\n" + (e?.message || e);
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    function openRegModal() { regOverlay.style.display = "flex"; }
-    function closeRegModal() { regOverlay.style.display = "none"; }
-
-    async function registerDo() {
-      // ✅ 無反応対策：必ずfinallyで解除＆必ずログ表示
-      setBusy(true);
-      try {
-        msgEl.innerText = "登録中…";
-        const j = await postForm({
-          action:"register",
-          staffCode: pendingRegisterStaffCode,
-          userId: lineUserId
-        });
-        msgEl.innerText = (j && j.ok) ? "登録OK！" : ("登録NG:\n" + (j.message || JSON.stringify(j)));
-
-        if (j && j.ok) {
-          closeRegModal();
-          // 登録できたら一覧を更新
-          await loadAll(getTodayKey());
-        }
-      } catch (e) {
-        msgEl.innerText = "登録エラー:\n" + (e?.message || e);
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    // ===== 通常確認（確定シフトの人） =====
-    async function confirmNormal(staffCode) {
-      setBusy(true);
-      try {
-        const dateKey = getTodayKey();
-        msgEl.innerText = "確認中…";
-        const j = await postForm({
-          action:"confirm",
-          date: dateKey,
-          staffCode: String(staffCode||"").trim(),
-          userId: lineUserId,
-          displayName: lineDisplayName
-        });
-
-        if (!j.ok) {
-          if (j.message === "TIMEOVER") {
-            setTimeOverMessage(true);
-            msgEl.innerText = "確認できる時間を過ぎています。";
-          } else {
-            msgEl.innerText = j.message || "確認に失敗しました";
-          }
-          return;
-        }
-
-        msgEl.innerText = (j.message === "already") ? "すでに確認済みです" : "確認OK！";
-        await loadList(dateKey);
-      } catch (e) {
-        msgEl.innerText = "エラー:\n" + (e?.message || e);
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    // ===== 臨時（手入力） =====
-    async function manualAdd() {
-      const staffCode = manualStaffCodeEl.value.trim();
-      const store = manualStoreEl.value.trim();
-      if (!staffCode) { msgEl.innerText = "スタッフコードを入れてください"; return; }
-      if (!store) { msgEl.innerText = "店名を選択してください"; return; }
-
-      setBusy(true);
-      try {
-        msgEl.innerText = "臨時確認中…";
-        const dateKey = getTodayKey();
-        const j = await postForm({
-          action:"manualAdd",
-          date: dateKey,
-          staffCode,
-          store,
-          userId: lineUserId,
-          displayName: lineDisplayName
-        });
-
-        if (!j.ok) {
-          msgEl.innerText = j.message || "臨時確認に失敗しました";
-          return;
-        }
-
-        msgEl.innerText = (j.message === "already") ? "すでに確認済みです" : "臨時OK！";
-        manualStaffCodeEl.value = "";
-        await loadList(dateKey);
-      } catch (e) {
-        msgEl.innerText = "エラー:\n" + (e?.message || e);
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    // ===== 起動 =====
-    (async function init() {
-      try {
-        await liff.init({ liffId: LIFF_ID });
-
-        if (!liff.isLoggedIn()) {
-          whoEl.innerText = "LINEログインが必要です（自動でログインに進みます）";
-          liff.login();
-          return;
-        }
-
-        const profile = await liff.getProfile();
-        lineUserId = profile.userId || "";
-        lineDisplayName = profile.displayName || "";
-        whoEl.innerText = `ログイン中：${lineDisplayName || "（名前取得できず）"}`;
-
-        // 登録済みか確認
-        const me = await loadMeAndMaybeRegister();
-
-        // 一覧表示
-        await loadAll(getTodayKey());
-        startDateChangeWatcher();
-
-        // 未登録なら、最初は「スタッフコード入力→確認→登録」へ誘導
-        if (!me.registered) {
-          // ここは「初回登録の入力UI」があなたの画面にある前提ならつなぐ必要あり
-          // 今回は “臨時入力欄を使って” 登録開始できるようにしておく
-          msgEl.innerText = "初回は登録が必要です。\n下の「臨時（手入力）」のスタッフコード欄に入力して「確認」を押すと登録確認が出ます。";
-          // ✅ 便宜的に：臨時の「確認」を登録の入口にする場合は下をON
-          // ただし臨時が使えなくなるので、運用に合わせて切り替えてね。
-          btnManual.onclick = async () => {
-            const sc = manualStaffCodeEl.value.trim();
-            if (!sc) { msgEl.innerText = "スタッフコードを入れてください"; return; }
-            await startRegisterFlow(sc);
-          };
-          btnManual.textContent = "登録へ進む";
-        }
-
-      } catch (e) {
-        whoEl.innerText = "起動に失敗しました";
-        msgEl.innerText = "エラー:\n" + (e?.message || e);
-      }
-    })();
-  </script>
+  // ★0:00跨ぎ対策：60秒ごとにstatus更新（軽い）
+  setInterval(refreshStatus, 60000);
+</script>
 </body>
 </html>
