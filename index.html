@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>出勤一覧</title>
   <style>
+    
+    .btnSmall { padding: 8px 10px; border-radius: 10px; font-weight: 900; font-size: 12px; }
+.btnRed { background:#d32f2f; }
+.btnGreen2 { background:#2e7d32; }
+.btnLight { background:#e0e0e0; color:#333; cursor:not-allowed; }
+
     body { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; background:#f7f7f7; padding:14px; }
     .card { background:#fff; padding:14px; border-radius:12px; max-width: 980px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
     h1 { margin: 0 0 10px; font-size: 20px; text-align:center; }
@@ -317,45 +323,105 @@
 
     // ===== 表 =====
     function renderTable(items){
-      if (!items || !items.length){
-        tableWrap.innerHTML = "";
-        return;
-      }
+  if (!items || !items.length){
+    tableWrap.innerHTML = "";
+    return;
+  }
 
-      let html = `
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 35%;">店名</th>
-              <th style="width: 35%;">開始日時</th>
-              <th style="width: 30%;">名前</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
+  let html = `
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 30%;">店名</th>
+          <th style="width: 30%;">開始日時</th>
+          <th style="width: 25%;">名前</th>
+          <th style="width: 15%;">確認</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
 
-      for (const it of items){
-        const store = esc(it.store || "");
-        const startAt = esc(it.startAt || "");
-        const name = esc(it.name || "");
-        html += `
-          <tr>
-            <td>${store}</td>
-            <td>${startAt}</td>
-            <td>${name}</td>
-          </tr>
-        `;
-      }
+  for (const it of items){
+    const store = esc(it.store || "");
+    const startAt = esc(it.startAt || "");
+    const name = esc(it.name || "");
+    const staffCode = String(it.staffCode || "");
 
-      html += "</tbody></table>";
-      tableWrap.innerHTML = html;
+    // Code.gsから返ってくる想定：confirmed / canConfirm
+    const confirmed = !!it.confirmed;
+    const canConfirm = !!it.canConfirm;
+
+    let btnHtml = "";
+
+    if (confirmed){
+      // ✅ 確認済み（誰が見ても同じ）
+      btnHtml = `<button class="btn btnLight btnSmall" disabled>確認済</button>`;
+    } else if (canConfirm){
+      // ✅ 本人だけ押せる
+      btnHtml = `<button class="btn btnGreen2 btnSmall" onclick="onConfirm('${staffCode}')">確認</button>`;
+    } else {
+      // ✅ 本人以外は押せない（でも表示は出す）
+      btnHtml = `<button class="btn btnLight btnSmall" disabled>未確認</button>`;
     }
+
+    html += `
+      <tr>
+        <td>${store}</td>
+        <td>${startAt}</td>
+        <td>${name}</td>
+        <td>${btnHtml}</td>
+      </tr>
+    `;
+  }
+
+  html += "</tbody></table>";
+  tableWrap.innerHTML = html;
+}
+
 
     function esc(str){
       return String(str).replace(/[&<>"']/g, s => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       }[s]));
     }
+
+    async function onConfirm(staffCode){
+  if (busyLock) return;
+
+  const today = getTodayKeyJst();
+  try {
+    busyOn("送信中…", "出勤確認を送っています", 1, 1, 60);
+
+    const res = await apiJson({
+      action: "confirm",
+      date: today,
+      staffCode: String(staffCode || ""),
+      userId: String(lineUserId || ""),
+      displayName: String(lineDisplayName || "")
+    });
+
+    if (!res){
+      busyOff();
+      showError("通信失敗", "confirmの返りがありません");
+      return;
+    }
+    if (!res.ok){
+      busyOff();
+      // TIMEOVERなど
+      showError("確認できません", res.message || "NG");
+      return;
+    }
+
+    busyOn("更新中…", "一覧を更新しています", 1, 1, 90);
+    await loadAll(); // 再読み込みで表示更新
+    busyOff();
+
+  } catch (err){
+    busyOff();
+    showError("確認失敗", (err && err.message) ? err.message : String(err));
+  }
+}
+
 
     // ===== 登録モーダル =====
     function openRegisterModal(){
@@ -528,11 +594,14 @@
         const me = await apiJson({ action:"me", userId: lineUserId });
         logDebug("me=" + JSON.stringify(me));
 
-        if (!me || !me.ok){
-          busyOff();
-          showError("登録確認に失敗", (me && me.message) ? me.message : "不明");
-          return;
-        }
+        // ★ registered=true でも staffCode が空なら「未登録扱い」にする（保険）
+const isActuallyRegistered = !!me.registered && !!(me.staffCode || "").trim();
+
+if (!isActuallyRegistered){
+  busyOff();
+  openRegisterModal();
+  return;
+}
 
         if (!me.registered){
           busyOff();
