@@ -1,3 +1,4 @@
+
 <!-- ===============================
 GitHub側 index.html（完成版 / LIFF対応）
 配置先：https://hachisuba.github.io/liff-test/
@@ -63,85 +64,6 @@ GitHub側 index.html（完成版 / LIFF対応）
       <div class="debug" id="debugBox"></div>
     </div>
   </div>
-<script>
-  // ★GAS WebApp（固定）
-  const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
-
-  // ★表示日（JSTの今日）※サーバ値が来たら上書き
-  function jstTodayYmd() {
-    const d = new Date();
-    const s = d.toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" }); // 2026/1/5 みたいな
-    // 0埋めしたいなら追加で整形するけど、表示だけならこれでOK
-    return s;
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    // まず保険で表示
-    const todayEl = document.getElementById("today");
-    if (todayEl) todayEl.textContent = jstTodayYmd();
-
-    // 一覧を取得（JSONP）
-    loadListJsonp();
-  });
-
-  function loadListJsonp() {
-    const statusEl = document.getElementById("status");
-    if (statusEl) statusEl.textContent = "読み込み中…";
-
-    const cb = "onListLoaded_" + Date.now();
-    window[cb] = (json) => {
-      try {
-        if (!json || !json.ok) {
-          if (statusEl) statusEl.textContent = "読み込み失敗（データが不正）";
-          return;
-        }
-
-        // サーバの今日（JST）で表示を上書き
-        const todayEl = document.getElementById("today");
-        if (todayEl && json.today) todayEl.textContent = json.today;
-
-        renderList(json.items || []);
-        if (statusEl) statusEl.textContent = (json.items && json.items.length)
-          ? `本日の一覧：${json.items.length}件`
-          : "出勤者がいません";
-      } finally {
-        // scriptタグ掃除
-        delete window[cb];
-      }
-    };
-
-    const url = `${GAS_WEBAPP_URL}?action=list&callback=${encodeURIComponent(cb)}&t=${Date.now()}`;
-    const sc = document.createElement("script");
-    sc.src = url;
-    sc.onerror = () => {
-      if (statusEl) statusEl.textContent = "読み込み失敗（通信エラー）";
-    };
-    document.body.appendChild(sc);
-  }
-
-  function renderList(items) {
-    const listEl = document.getElementById("list");
-    if (!listEl) return;
-    listEl.innerHTML = "";
-
-    for (const it of items) {
-      const div = document.createElement("div");
-      div.className = "card";
-      div.innerHTML = `
-        <div><b>${esc(it.place || "")}</b></div>
-        <div class="muted">${esc(it.status || "")}</div>
-        <div style="margin-top:6px;">${esc(it.sei || "")} ${esc(it.mei || "")}</div>
-      `;
-      listEl.appendChild(div);
-    }
-  }
-
-  function esc(s) {
-    return String(s ?? "")
-      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
-      .replaceAll('"',"&quot;").replaceAll("'","&#039;");
-  }
-</script>
 
 <script>
 /* ===============================
