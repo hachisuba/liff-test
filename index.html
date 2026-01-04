@@ -70,199 +70,112 @@ GitHub側 index.html（完成版 / LIFF対応）
 固定情報（必要なら更新する場所）
 =============================== */
 
-// ★更新した場合はここを修正：GAS WebアプリURL（/exec）
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-// ★更新した場合はここを修正：LIFF_ID
-const LIFF_ID = "2008802899-oJWsorEf";
+  // ★ここは必ず「GAS WebApp URL（/exec）」を入れる
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
 
-// ★チャンネルアクセストークンは “フロントに置かない”（漏れる）ので、このページでは使いません。
-// （運用で必要になったらGAS側/サーバ側に置く）
+  let debugOn = false;
+  let inflight = false;
 
-/* ===============================
-画面用
-=============================== */
-let debugOn = false;
-let inflight = false;
-let aliveReq = 0;
+  const elViewDate  = document.getElementById("viewDate");
+  const elTbody     = document.getElementById("tbody");
+  const elStatus    = document.getElementById("statusText");
+  const elDebug     = document.getElementById("debugBox");
+  const elLoading   = document.getElementById("loading");
 
-const elLoginName = document.getElementById("loginName");
-const elViewDate  = document.getElementById("viewDate");
-const elTbody     = document.getElementById("tbody");
-const elStatus    = document.getElementById("statusText");
-const elDebug     = document.getElementById("debugBox");
-const elLoading   = document.getElementById("loading");
-
-function setLoading(on){ elLoading.style.display = on ? "block" : "none"; }
-function setStatus(msg){ elStatus.textContent = msg || ""; }
-function setDebug(text){
-  elDebug.textContent = text || "";
-  elDebug.style.display = debugOn ? "block" : "none";
-}
-function esc(s){
-  return String(s ?? "")
-    .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;").replaceAll("'","&#39;");
-}
-function renderRows(rows){
-  if(!rows || !rows.length){
-    elTbody.innerHTML = `<tr><td class="muted" colspan="3" style="text-align:center">出勤者がいません</td></tr>`;
-    return;
+  function setLoading(on){ elLoading.style.display = on ? "block" : "none"; }
+  function setStatus(msg){ elStatus.textContent = msg || ""; }
+  function setDebug(text){
+    elDebug.textContent = text || "";
+    elDebug.style.display = debugOn ? "block" : "none";
   }
-  elTbody.innerHTML = rows.map(r => `
-    <tr>
-      <td>${esc(r.store||"")}</td>
-      <td>${esc(r.start||"")}</td>
-      <td>${esc(r.name||"")}</td>
-    </tr>
-  `).join("");
-}
-
-/* ===============================
-JSONP（CORS回避）→ GAS doGet(action=...) に当てる
-=============================== */
-function jsonp(url, timeoutMs = 12000){
-  return new Promise((resolve, reject) => {
-    const cb = "cb_" + Date.now() + "_" + Math.floor(Math.random()*1e6);
-    const s = document.createElement("script");
-    const sep = url.includes("?") ? "&" : "?";
-    const full = url + sep + "callback=" + encodeURIComponent(cb);
-
-    let timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("timeout"));
-    }, timeoutMs);
-
-    function cleanup(){
-      try{ delete window[cb]; }catch(e){ window[cb]=undefined; }
-      if (s && s.parentNode) s.parentNode.removeChild(s);
-      clearTimeout(timer);
+  function esc(s){
+    return String(s ?? "")
+      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#39;");
+  }
+  function renderRows(rows){
+    if(!rows || !rows.length){
+      elTbody.innerHTML = `<tr><td class="muted" colspan="3" style="text-align:center">出勤者がいません</td></tr>`;
+      return;
     }
+    elTbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${esc(r.store||"")}</td>
+        <td>${esc(r.start||"")}</td>
+        <td>${esc(r.name||"")}</td>
+      </tr>
+    `).join("");
+  }
 
-    window[cb] = (data) => {
-      cleanup();
-      resolve(data);
-    };
+  // ✅ JSONPでGASから取得（CORS回避）
+  function getListByJsonp_() {
+    return new Promise((resolve, reject) => {
+      const cb = "__cb_" + Date.now() + "_" + Math.floor(Math.random()*1000);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error("timeout"));
+      }, 15000);
 
-    s.onerror = () => {
-      cleanup();
-      reject(new Error("script_error"));
-    };
+      function cleanup(){
+        clearTimeout(timeout);
+        try { delete window[cb]; } catch(_) {}
+        if (sc && sc.parentNode) sc.parentNode.removeChild(sc);
+      }
 
-    s.src = full;
-    document.body.appendChild(s);
-  });
-}
+      window[cb] = (data) => {
+        cleanup();
+        resolve(data);
+      };
 
-function buildApiUrl(params){
-  const u = new URL(GAS_URL);
-  Object.keys(params).forEach(k => u.searchParams.set(k, params[k]));
-  return u.toString();
-}
+      const url = `${GAS_URL}?action=list&callback=${encodeURIComponent(cb)}&t=${Date.now()}`;
+      const sc = document.createElement("script");
+      sc.src = url;
+      sc.onerror = () => {
+        cleanup();
+        reject(new Error("jsonp_error"));
+      };
+      document.body.appendChild(sc);
+    });
+  }
 
-async function apiStrong(params, opt = {}){
-  const { retry = 2, timeoutMs = 12000 } = opt;
-  let lastErr;
-  for (let i=0;i<=retry;i++){
+  async function loadAll(){
+    if(inflight) return;
+    inflight = true;
+    setLoading(true);
+    setStatus("読み込み中…");
+
     try{
-      const url = buildApiUrl(params);
-      const data = await jsonp(url, timeoutMs);
-      return data;
+      const list = await getListByJsonp_();
+
+      if (!list || list.ok === false) {
+        throw new Error(list?.message || list?.error || "server_ng");
+      }
+
+      // Code.gs 完全版なら viewDate/rows が返る
+      elViewDate.textContent = list.viewDate || list.today || "-";
+      renderRows(list.rows || []);
+      setStatus("一覧を更新しました");
+      setDebug(JSON.stringify(list, null, 2));
+
     }catch(e){
-      lastErr = e;
-      if(i===retry) throw lastErr;
-      await new Promise(r=>setTimeout(r, 500*(i+1)));
+      setStatus("読み込み失敗");
+      renderRows([]);
+      setDebug(String(e));
+    }finally{
+      setLoading(false);
+      inflight = false;
     }
   }
-  throw lastErr;
-}
 
-/* ===============================
-LIFFログイン → userId取得 → me/list
-=============================== */
-let userId = "";
-let displayName = "";
+  document.getElementById("btnReload").addEventListener("click", loadAll);
+  document.getElementById("btnDebug").addEventListener("click", () => {
+    debugOn = !debugOn;
+    elDebug.style.display = debugOn ? "block" : "none";
+  });
+  document.addEventListener("DOMContentLoaded", loadAll);
 
-async function initLiff(){
-  await liff.init({ liffId: LIFF_ID });
 
-  if (!liff.isLoggedIn()) {
-    // LIFF内では基本ログインされる想定。未ログインならログインへ。
-    liff.login({ redirectUri: location.href });
-    return;
-  }
-
-  const profile = await liff.getProfile();
-  userId = profile.userId || "";
-  displayName = profile.displayName || "";
-
-  elLoginName.textContent = displayName || "-";
-}
-
-async function loadAll_once(){
-  if(inflight) return;
-  inflight = true;
-
-  const reqId = ++aliveReq;
-  setLoading(true);
-  setStatus("読み込み中…");
-
-  try{
-    // ① me
-    const me = await apiStrong({ action:"me", userId }, { retry: 1, timeoutMs: 12000 });
-    if(reqId !== aliveReq) return;
-
-    if(me && me.registered && me.name){
-      elLoginName.textContent = me.name;
-    } else {
-      // 未登録ならLIFFの表示名（登録画面は別途追加できる）
-      elLoginName.textContent = displayName || "-";
-    }
-
-    // ② list
-    const list = await apiStrong({ action:"list", userId }, { retry: 2, timeoutMs: 12000 });
-    if(reqId !== aliveReq) return;
-
-    if(list.ok === false) throw new Error(list.message || "ng");
-
-    elViewDate.textContent = list.viewDate || "-";
-    renderRows(list.rows || []);
-    setStatus("一覧を更新しました");
-
-    setDebug(
-`GAS_URL=${GAS_URL}
-LIFF_ID=${LIFF_ID}
-userId=${userId}
-me=${JSON.stringify(me)}
-list=${JSON.stringify(list)}`
-    );
-
-  }catch(e){
-    if(reqId !== aliveReq) return;
-    setStatus("読み込み失敗");
-    renderRows([]);
-    setDebug(String(e));
-  }finally{
-    if(reqId === aliveReq) setLoading(false);
-    inflight = false;
-  }
-}
-
-document.getElementById("btnReload").addEventListener("click", loadAll_once);
-document.getElementById("btnDebug").addEventListener("click", () => {
-  debugOn = !debugOn;
-  elDebug.style.display = debugOn ? "block" : "none";
-});
-
-document.addEventListener("DOMContentLoaded", async () => {
-  try{
-    await initLiff();
-    await loadAll_once();
-  }catch(e){
-    setStatus("読み込み失敗");
-    setDebug(String(e));
-  }
-});
 </script>
 </body>
 </html>
