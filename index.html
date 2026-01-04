@@ -597,7 +597,7 @@
         logDebug("me=" + JSON.stringify(me));
 
         // ★ registered=true でも staffCode が空なら「未登録扱い」にする（保険）
-const isActuallyRegistered = !!me.registered && !!(me.staffCode || "").trim();
+const isActuallyRegistered = !!me.registered && !!String(me.staffCode || "").trim();
 
 if (!isActuallyRegistered){
   busyOff();
