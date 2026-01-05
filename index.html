@@ -32,7 +32,6 @@
     .btnGray{background:#bdbdbd; cursor:not-allowed;}
     .selfTag{display:inline-block;font-size:11px;font-weight:800;margin-left:6px;background:#ffe8e8;color:#b71c1c;border-radius:999px;padding:2px 8px;}
 
-    /* 登録エリア */
     .regBox{display:none;margin-top:14px;padding:12px;border-radius:14px;background:#fff5f5;border:1px solid #ffd3d3;}
     .regTitle{font-weight:900;color:#b71c1c;margin-bottom:8px;text-align:center;}
     .regRow{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
@@ -41,15 +40,15 @@
     .regBtn:disabled{background:#bdbdbd;cursor:not-allowed;}
     .regHint{margin-top:8px;color:#666;font-size:13px;text-align:center;}
 
-    /* 確認モーダル */
     .modalBg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;padding:18px;z-index:9999;}
     .modal{background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.2);max-width:420px;width:100%;padding:16px;}
     .modalTitle{font-weight:900;font-size:16px;text-align:center;margin-bottom:8px;}
-    .modalText{font-size:14px;color:#333;text-align:center;line-height:1.6;}
+    .modalText{font-size:14px;color:#333;text-align:center;line-height:1.6;white-space:pre-line;}
     .modalBtns{display:flex;gap:10px;justify-content:center;margin-top:12px;}
     .mBtn{border:0;border-radius:10px;padding:10px 14px;font-weight:900;cursor:pointer;}
     .mBack{background:#e0e0e0;color:#333;}
     .mOk{background:#d32f2f;color:#fff;}
+    .mOk:disabled{background:#bdbdbd;cursor:not-allowed;}
   </style>
 </head>
 <body>
@@ -60,7 +59,6 @@
       <div class="sub">ログイン中：<span id="loginName">-</span></div>
       <div class="center"><span class="pill">表示日：<span id="viewDate">-</span></span></div>
 
-      <!-- 未登録時の登録画面 -->
       <div class="regBox" id="regBox">
         <div class="regTitle">スタッフ登録が必要です</div>
         <div class="regRow">
@@ -96,7 +94,6 @@
     </div>
   </div>
 
-  <!-- 確認モーダル -->
   <div class="modalBg" id="modalBg">
     <div class="modal">
       <div class="modalTitle">確認</div>
@@ -121,7 +118,8 @@
   let myName = "";
   let meOk = false;
 
-  let pendingStaffCode = ""; // モーダルで登録する対象
+  let pendingStaffCode = "";
+  let pendingStaffName = "";
 
   const elLoginName = document.getElementById("loginName");
   const elViewDate  = document.getElementById("viewDate");
@@ -150,15 +148,21 @@
       .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
       .replaceAll('"',"&quot;").replaceAll("'","&#39;");
   }
-
   function showRegister_(on){ elRegBox.style.display = on ? "block" : "none"; }
   function showModal_(on){ elModalBg.style.display = on ? "flex" : "none"; }
 
-  // JSONP
-  function jsonp_(url) {
+  // ===============================
+  // ✅ ここが修正ポイント：JSONPを「元々動いてた形」に統一
+  // ===============================
+  function callJsonp_(paramsObj){
     return new Promise((resolve, reject) => {
-      const cb = "__cb_" + Date.now() + "_" + Math.floor(Math.random()*1000);
-      const timeout = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 15000);
+      const cb = "cb" + Date.now() + "_" + Math.floor(Math.random()*100000);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error("timeout"));
+      }, 15000);
+
+      let sc = null;
 
       function cleanup(){
         clearTimeout(timeout);
@@ -166,41 +170,47 @@
         if (sc && sc.parentNode) sc.parentNode.removeChild(sc);
       }
 
-      window[cb] = (data) => { cleanup(); resolve(data); };
+      window[cb] = (data) => {
+        cleanup();
+        resolve(data);
+      };
 
-      const sc = document.createElement("script");
-      sc.src = url + (url.includes("?") ? "&" : "?") + "callback=" + encodeURIComponent(cb) + "&t=" + Date.now();
-      sc.onerror = () => { cleanup(); reject(new Error("jsonp_error")); };
+      const qs = new URLSearchParams(paramsObj || {});
+      qs.set("callback", cb);
+      qs.set("t", String(Date.now()));
+
+      const url = GAS_URL + "?" + qs.toString();
+      sc = document.createElement("script");
+      sc.src = url;
+
+      sc.onerror = () => {
+        cleanup();
+        reject(new Error("jsonp_error"));
+      };
+
       document.body.appendChild(sc);
     });
   }
 
-  async function fetchMe_(){
-    if(!myUserId) return { ok:false, message:"no userId" };
-    const url = `${GAS_URL}?action=me&userId=${encodeURIComponent(myUserId)}&displayName=${encodeURIComponent(myDisplayName||"")}`;
-    return await jsonp_(url);
+  function getListByJsonp_(){
+    return callJsonp_({ action:"list" });
   }
-
-  async function fetchList_(){
-    const url = `${GAS_URL}?action=list`;
-    return await jsonp_(url);
+  function getMeByJsonp_(){
+    return callJsonp_({ action:"me", userId: myUserId, displayName: myDisplayName || "" });
   }
-
-  async function apply_(){
-    const url = `${GAS_URL}?action=apply&userId=${encodeURIComponent(myUserId)}&displayName=${encodeURIComponent(myDisplayName||"")}`;
-    return await jsonp_(url);
+  function getApplyByJsonp_(){
+    return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" });
   }
-
-  // 登録前照合（名前を取る）
-  async function lookup_(staffCode){
-    const url = `${GAS_URL}?action=lookup&staffCode=${encodeURIComponent(staffCode||"")}`;
-    return await jsonp_(url);
+  function getLookupByJsonp_(staffCode){
+    return callJsonp_({ action:"lookup", staffCode: String(staffCode || "") });
   }
-
-  // 登録（C列へ userId を入れる）
-  async function register_(staffCode){
-    const url = `${GAS_URL}?action=register&userId=${encodeURIComponent(myUserId)}&displayName=${encodeURIComponent(myDisplayName||"")}&staffCode=${encodeURIComponent(staffCode||"")}`;
-    return await jsonp_(url);
+  function getRegisterByJsonp_(staffCode){
+    return callJsonp_({
+      action:"register",
+      userId: myUserId,
+      displayName: myDisplayName || "",
+      staffCode: String(staffCode || "")
+    });
   }
 
   function renderRows(rows){
@@ -249,7 +259,7 @@
       myUserId = prof.userId || "";
       myDisplayName = prof.displayName || "";
 
-      const me = await fetchMe_();
+      const me = await getMeByJsonp_();
       if (me && me.ok) {
         meOk = true;
         myStaffCode = me.staffCode || "";
@@ -265,19 +275,18 @@
         showRegister_(true);
       }
 
-      // 入力は半角数字のみ
+      // 半角数字のみ（非数字は削除）
       const updateRegBtn = () => {
         const v = String(elRegCode.value || "").trim();
         elRegBtn.disabled = !(v && /^\d+$/.test(v));
       };
       elRegCode.addEventListener("input", () => {
-        // 非数字を除去
         elRegCode.value = String(elRegCode.value || "").replace(/[^\d]/g, "");
         updateRegBtn();
       });
       updateRegBtn();
 
-      // 確認 → 名前照合 → モーダル表示
+      // ✅ 確認 → lookup → ポップアップ表示
       elRegBtn.addEventListener("click", async () => {
         if (inflight) return;
         const staffCode = String(elRegCode.value || "").trim();
@@ -288,23 +297,27 @@
         setStatus("照合中…");
 
         try{
-          const res = await lookup_(staffCode);
+          const res = await getLookupByJsonp_(staffCode);
           if (!res || res.ok === false) {
             throw new Error(res?.message || res?.error || "lookup_ng");
           }
 
           pendingStaffCode = staffCode;
+          pendingStaffName = String(res.name || "").trim();
 
           if (res.alreadyLinked) {
-            elModalText.textContent = `あなたは「${res.name || "（名前未設定）"}」さんですね。\n\n※このスタッフコードは既に登録済みです。`;
+            elModalText.textContent =
+              `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n\n※このスタッフコードは既に登録済みです。`;
             elModalOk.disabled = true;
           } else {
-            elModalText.textContent = `あなたは「${res.name || "（名前未設定）"}」さんですね。\n本日この端末で登録してよろしいでしょうか？`;
+            elModalText.textContent =
+              `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n登録してよろしいでしょうか？`;
             elModalOk.disabled = false;
           }
 
           showModal_(true);
           setStatus("");
+          setDebug(""); // ここで余計なエラーを消す
 
         }catch(e){
           setStatus("照合失敗");
@@ -326,9 +339,10 @@
   elModalBack.addEventListener("click", () => {
     showModal_(false);
     pendingStaffCode = "";
+    pendingStaffName = "";
   });
 
-  // モーダル：登録
+  // ✅ モーダル：登録 → register → me再取得 → 一覧更新
   elModalOk.addEventListener("click", async () => {
     if (inflight) return;
     if (!pendingStaffCode) return;
@@ -338,13 +352,12 @@
     setStatus("登録中…");
 
     try{
-      const res = await register_(pendingStaffCode);
+      const res = await getRegisterByJsonp_(pendingStaffCode);
       if (!res || res.ok === false) {
         throw new Error(res?.message || res?.error || "register_ng");
       }
 
-      // 登録後：me再取得 → 画面更新
-      const me2 = await fetchMe_();
+      const me2 = await getMeByJsonp_();
       if (me2 && me2.ok) {
         meOk = true;
         myStaffCode = me2.staffCode || "";
@@ -355,6 +368,8 @@
 
       showModal_(false);
       pendingStaffCode = "";
+      pendingStaffName = "";
+
       setStatus("登録しました");
       await loadAll();
 
@@ -374,7 +389,7 @@
     setStatus("読み込み中…");
 
     try{
-      const list = await fetchList_();
+      const list = await getListByJsonp_();
       if (!list || list.ok === false) {
         throw new Error(list?.message || list?.error || "server_ng");
       }
@@ -407,7 +422,7 @@
     setStatus("申請中…");
 
     try{
-      const res = await apply_();
+      const res = await getApplyByJsonp_();
       if (!res || res.ok === false) {
         throw new Error(res?.message || res?.error || "apply_ng");
       }
