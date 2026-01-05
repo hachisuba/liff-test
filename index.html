@@ -1,5 +1,5 @@
 <!-- ===============================
-GitHub側 index.html（完成版 / LIFF対応）
+GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非表示）
 配置先：https://hachisuba.github.io/liff-test/
 =============================== -->
 <!doctype html>
@@ -30,6 +30,13 @@ GitHub側 index.html（完成版 / LIFF対応）
     .spin{display:none;margin:8px auto 0;width:18px;height:18px;border-radius:50%;border:3px solid #ddd;border-top-color:#333;animation:rot .8s linear infinite;}
     @keyframes rot{to{transform:rotate(360deg)}}
 
+    /* ボタン（ひとつ前の見た目に寄せる） */
+    .btnSmall{border:0;border-radius:10px;padding:8px 10px;font-weight:800;font-size:13px;color:#fff;cursor:pointer;min-width:72px;}
+    .btnRed{background:#d32f2f;}
+    .btnDone{background:#2e7d32;}
+    .btnGray{background:#bdbdbd; cursor:not-allowed;}
+
+    /* 登録フォーム */
     .regBox{display:none;margin-top:14px;padding:12px;border-radius:14px;background:#fff5f5;border:1px solid #ffd3d3;}
     .regTitle{font-weight:900;color:#b71c1c;margin-bottom:8px;text-align:center;}
     .regRow{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
@@ -38,6 +45,7 @@ GitHub側 index.html（完成版 / LIFF対応）
     .regBtn:disabled{background:#bdbdbd;cursor:not-allowed;}
     .regHint{margin-top:8px;color:#666;font-size:13px;text-align:center;}
 
+    /* ポップアップ */
     .modalBg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;padding:18px;z-index:9999;}
     .modal{background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.2);max-width:420px;width:100%;padding:16px;}
     .modalTitle{font-weight:900;font-size:16px;text-align:center;margin-bottom:8px;}
@@ -57,14 +65,14 @@ GitHub側 index.html（完成版 / LIFF対応）
       <div class="sub">ログイン中：<span id="loginName">-</span></div>
       <div class="center"><span class="pill">表示日：<span id="viewDate">-</span></span></div>
 
-      <!-- ★追加：未登録の時だけ出す -->
+      <!-- 登録フォーム（初回だけ表示させる） -->
       <div class="regBox" id="regBox">
         <div class="regTitle">スタッフ登録が必要です</div>
         <div class="regRow">
           <input class="regInput" id="regStaffCode" placeholder="スタッフコード（半角数字）" inputmode="numeric" autocomplete="off" />
           <button class="regBtn" id="regBtn" disabled>確認</button>
         </div>
-        <div class="regHint">※ LINE userId（U〜）は自動取得して登録します</div>
+        <div class="regHint" id="regHint">※ LINE userId（U〜）は自動取得して登録します</div>
       </div>
 
       <div class="btnrow">
@@ -74,16 +82,18 @@ GitHub側 index.html（完成版 / LIFF対応）
 
       <div class="spin" id="loading"></div>
 
+      <!-- ✅ ボタン列を復活（4列） -->
       <table>
         <thead>
           <tr>
-            <th style="width:40%">店名</th>
-            <th style="width:35%">開始日時</th>
-            <th style="width:25%">名前</th>
+            <th style="width:34%">店名</th>
+            <th style="width:26%">開始日時</th>
+            <th style="width:26%">名前</th>
+            <th style="width:14%">確認</th>
           </tr>
         </thead>
         <tbody id="tbody">
-          <tr><td class="muted" colspan="3" style="text-align:center">読み込み中…</td></tr>
+          <tr><td class="muted" colspan="4" style="text-align:center">読み込み中…</td></tr>
         </tbody>
       </table>
 
@@ -92,7 +102,7 @@ GitHub側 index.html（完成版 / LIFF対応）
     </div>
   </div>
 
-  <!-- ★追加：確認ポップアップ -->
+  <!-- 確認ポップアップ -->
   <div class="modalBg" id="modalBg">
     <div class="modal">
       <div class="modalTitle">確認</div>
@@ -105,19 +115,24 @@ GitHub側 index.html（完成版 / LIFF対応）
   </div>
 
 <script>
-/* ===============================
-固定情報（必要なら更新する場所）
-=============================== */
+  /* ===============================
+  固定情報（変更しない）
+  =============================== */
   const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
   const LIFF_ID = "2008802899-oJWsorEf";
 
   let debugOn = false;
   let inflight = false;
 
-  // ★登録用
+  // LIFF情報
   let myUserId = "";
   let myDisplayName = "";
 
+  // 自分判定（listのrow.staffCode と myStaffCode を一致で見る）
+  // ※GASがstaffCodeを返せてる前提（ひとつ前は出てたとのことなので戻す）
+  let myStaffCode = "";
+
+  // 登録ポップアップ用
   let pendingStaffCode = "";
   let pendingStaffName = "";
 
@@ -131,6 +146,7 @@ GitHub側 index.html（完成版 / LIFF対応）
   const elRegBox     = document.getElementById("regBox");
   const elRegCode    = document.getElementById("regStaffCode");
   const elRegBtn     = document.getElementById("regBtn");
+  const elRegHint    = document.getElementById("regHint");
 
   const elModalBg    = document.getElementById("modalBg");
   const elModalText  = document.getElementById("modalText");
@@ -151,7 +167,7 @@ GitHub側 index.html（完成版 / LIFF対応）
   function showRegister_(on){ elRegBox.style.display = on ? "block" : "none"; }
   function showModal_(on){ elModalBg.style.display = on ? "flex" : "none"; }
 
-  // ✅ JSONP（元の③と同じ考え方）
+  // JSONP（listと同じ方式で動作を壊さない）
   function callJsonp_(paramsObj) {
     return new Promise((resolve, reject) => {
       const cb = "__cb_" + Date.now() + "_" + Math.floor(Math.random()*1000);
@@ -163,16 +179,14 @@ GitHub側 index.html（完成版 / LIFF対応）
         try { delete window[cb]; } catch(_) {}
         if (sc && sc.parentNode) sc.parentNode.removeChild(sc);
       }
-
       window[cb] = (data) => { cleanup(); resolve(data); };
 
       const qs = new URLSearchParams(paramsObj || {});
       qs.set("callback", cb);
       qs.set("t", String(Date.now()));
 
-      const url = `${GAS_URL}?${qs.toString()}`;
       sc = document.createElement("script");
-      sc.src = url;
+      sc.src = `${GAS_URL}?${qs.toString()}`;
       sc.onerror = () => { cleanup(); reject(new Error("jsonp_error")); };
       document.body.appendChild(sc);
     });
@@ -181,26 +195,48 @@ GitHub側 index.html（完成版 / LIFF対応）
   function getListByJsonp_(){ return callJsonp_({ action:"list" }); }
   function getLookupByJsonp_(staffCode){ return callJsonp_({ action:"lookup", staffCode: String(staffCode||"") }); }
   function getRegisterByJsonp_(staffCode){
-    return callJsonp_({
-      action:"register",
-      userId: myUserId,
-      displayName: myDisplayName || "",
-      staffCode: String(staffCode||"")
-    });
+    return callJsonp_({ action:"register", userId: myUserId, displayName: myDisplayName || "", staffCode: String(staffCode||"") });
+  }
+  // 申請（ひとつ前で出てた前提のまま呼ぶ）
+  function getApplyByJsonp_(){
+    return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" });
+  }
+  // 自分のstaffCode取得（存在する場合のみ使う。無ければ list 側で自己判定しない）
+  function getMeByJsonp_(){
+    return callJsonp_({ action:"me", userId: myUserId, displayName: myDisplayName || "" });
   }
 
+  // ✅ ボタン表示を復活
   function renderRows(rows){
     if(!rows || !rows.length){
-      elTbody.innerHTML = `<tr><td class="muted" colspan="3" style="text-align:center">出勤者がいません</td></tr>`;
+      elTbody.innerHTML = `<tr><td class="muted" colspan="4" style="text-align:center">出勤者がいません</td></tr>`;
       return;
     }
-    elTbody.innerHTML = rows.map(r => `
-      <tr>
-        <td>${esc(r.store||"")}</td>
-        <td>${esc(r.start||"")}</td>
-        <td>${esc(r.name||"")}</td>
-      </tr>
-    `).join("");
+
+    elTbody.innerHTML = rows.map(r => {
+      const staffCode = String(r.staffCode || "");
+      const confirmed = !!r.confirmed;
+
+      const isSelf = (myStaffCode && staffCode && myStaffCode === staffCode);
+
+      let btnHtml = "";
+      if (confirmed) {
+        btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
+      } else if (isSelf) {
+        btnHtml = `<button class="btnSmall btnRed" data-action="apply">申請</button>`;
+      } else {
+        btnHtml = `<button class="btnSmall btnGray" disabled>未</button>`;
+      }
+
+      return `
+        <tr>
+          <td>${esc(r.store||"")}</td>
+          <td>${esc(r.start||"")}</td>
+          <td>${esc(r.name||"")}</td>
+          <td style="text-align:right">${btnHtml}</td>
+        </tr>
+      `;
+    }).join("");
   }
 
   async function loadAll(){
@@ -216,7 +252,8 @@ GitHub側 index.html（完成版 / LIFF対応）
       elViewDate.textContent = list.viewDate || list.today || "-";
       renderRows(list.rows || []);
       setStatus("一覧を更新しました");
-      setDebug(JSON.stringify(list, null, 2));
+
+      setDebug(JSON.stringify({ me:{ myUserId, myStaffCode, myDisplayName }, list }, null, 2));
     }catch(e){
       setStatus("読み込み失敗");
       renderRows([]);
@@ -227,7 +264,18 @@ GitHub側 index.html（完成版 / LIFF対応）
     }
   }
 
-  // ✅ ここが「ひとつ前（元の③）」のLIFFの流れ
+  // ✅ 登録フォーム：初回だけ表示（同端末）
+  function shouldShowRegister_(){
+    if (!myUserId) return false;
+    const key = "registered_" + myUserId;
+    return localStorage.getItem(key) !== "1";
+  }
+  function markRegistered_(){
+    if (!myUserId) return;
+    const key = "registered_" + myUserId;
+    localStorage.setItem(key, "1");
+  }
+
   async function initLiff_(){
     try{
       await liff.init({ liffId: LIFF_ID });
@@ -235,7 +283,6 @@ GitHub側 index.html（完成版 / LIFF対応）
       if (!liff.isLoggedIn()) {
         elLoginName.textContent = "（LINEで開いてください）";
         setStatus("LINEで開いてください");
-        // 未ログイン状態では登録できないので登録UIは出さない（元の感覚に近づける）
         showRegister_(false);
         return;
       }
@@ -245,21 +292,30 @@ GitHub側 index.html（完成版 / LIFF対応）
       myDisplayName = prof.displayName || "";
       elLoginName.textContent = myDisplayName || "-";
 
-      // ここでは「未登録かどうか」をサーバで判定してないので、
-      // まず登録UIは出しておき、照合→登録で進められるようにする
-      showRegister_(true);
+      // 可能なら自分のstaffCodeをサーバから取得（ある場合だけ）
+      try{
+        const me = await getMeByJsonp_();
+        if (me && me.ok && me.staffCode) {
+          myStaffCode = String(me.staffCode || "");
+        }
+      }catch(_){
+        // me が無い環境でも list は動くのでスルー
+      }
 
-      // ボタン活性制御（数字＋userId取得済み）
-      const refreshBtn = () => {
+      // 初回だけ登録フォーム表示
+      showRegister_(shouldShowRegister_());
+
+      // ボタン活性
+      const refreshRegBtn = () => {
         const v = String(elRegCode.value || "").trim();
         elRegBtn.disabled = !(v && /^\d+$/.test(v) && myUserId);
       };
 
       elRegCode.addEventListener("input", () => {
         elRegCode.value = String(elRegCode.value || "").replace(/[^\d]/g, "");
-        refreshBtn();
+        refreshRegBtn();
       });
-      refreshBtn();
+      refreshRegBtn();
 
       // 確認 → lookup → ポップアップ
       elRegBtn.addEventListener("click", async () => {
@@ -280,6 +336,10 @@ GitHub側 index.html（完成版 / LIFF対応）
 
           elModalText.textContent =
             `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n登録してよろしいでしょうか？`;
+
+          // 既に登録済みなら登録ボタン無効
+          elModalOk.disabled = !!res.alreadyLinked;
+
           showModal_(true);
           setStatus("");
         }catch(e){
@@ -292,11 +352,11 @@ GitHub側 index.html（完成版 / LIFF対応）
       });
 
     }catch(e){
-      // ここも「元の③」に近い挙動：接続できないなら表示だけはしておく
-      elLoginName.textContent = "（LIFF初期化失敗）";
+      // ここは余計にいじらず、最低限
+      elLoginName.textContent = "（LINEで開いてください）";
       setStatus("LINEで開いてください");
-      setDebug(String(e));
       showRegister_(false);
+      setDebug(String(e));
     }
   }
 
@@ -307,7 +367,7 @@ GitHub側 index.html（完成版 / LIFF対応）
     pendingStaffName = "";
   });
 
-  // モーダル：登録 → register → 閉じる
+  // モーダル：登録 → register → ✅ フォーム非表示 + 一覧再読み込み
   elModalOk.addEventListener("click", async () => {
     if(inflight) return;
     if(!pendingStaffCode) return;
@@ -320,13 +380,46 @@ GitHub側 index.html（完成版 / LIFF対応）
       const res = await getRegisterByJsonp_(pendingStaffCode);
       if (!res || res.ok === false) throw new Error(res?.message || res?.error || "register_ng");
 
+      // ✅ 登録完了：初回表示フラグを保存してフォームを消す
+      markRegistered_();
+      showRegister_(false);
+
+      // 自分のstaffCodeが返るなら更新
+      if (res.staffCode) myStaffCode = String(res.staffCode || "");
+
       showModal_(false);
       pendingStaffCode = "";
       pendingStaffName = "";
 
       setStatus("登録しました");
+      await loadAll(); // ✅ ボタン表示含めて一覧を即更新
     }catch(e){
       setStatus("登録失敗");
+      setDebug(String(e));
+    }finally{
+      setLoading(false);
+      inflight = false;
+    }
+  });
+
+  // ✅ 申請ボタン
+  elTbody.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-action='apply']");
+    if(!btn) return;
+    if(inflight) return;
+    if(!myUserId) return;
+
+    inflight = true;
+    setLoading(true);
+    setStatus("申請中…");
+
+    try{
+      const res = await getApplyByJsonp_();
+      if (!res || res.ok === false) throw new Error(res?.message || res?.error || "apply_ng");
+      await loadAll();
+      setStatus("申請しました（完了）");
+    }catch(e){
+      setStatus("申請失敗");
       setDebug(String(e));
     }finally{
       setLoading(false);
