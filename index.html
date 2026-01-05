@@ -145,4 +145,287 @@
   function setStatus(msg){ elStatus.textContent = msg || ""; }
   function setDebug(text){
     elDebug.textContent = text || "";
-    el
+    elDebug.style.display = debugOn ? "block" : "none";
+  }
+  function esc(s){
+    return String(s ?? "")
+      .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#39;");
+  }
+  function showRegister_(on){ elRegBox.style.display = on ? "block" : "none"; }
+  function showModal_(on){ elModalBg.style.display = on ? "flex" : "none"; }
+
+  // ✅ ここは「listが動いてる」JSONP方式のまま
+  function callJsonp_(paramsObj){
+    return new Promise((resolve, reject) => {
+      const cb = "cb" + Date.now() + "_" + Math.floor(Math.random()*100000);
+      const timeout = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 15000);
+      let sc = null;
+
+      function cleanup(){
+        clearTimeout(timeout);
+        try { delete window[cb]; } catch(_) {}
+        if (sc && sc.parentNode) sc.parentNode.removeChild(sc);
+      }
+      window[cb] = (data) => { cleanup(); resolve(data); };
+
+      const qs = new URLSearchParams(paramsObj || {});
+      qs.set("callback", cb);
+      qs.set("t", String(Date.now()));
+
+      sc = document.createElement("script");
+      sc.src = GAS_URL + "?" + qs.toString();
+      sc.onerror = () => { cleanup(); reject(new Error("jsonp_error")); };
+      document.body.appendChild(sc);
+    });
+  }
+
+  function getListByJsonp_(){ return callJsonp_({ action:"list" }); }
+  function getMeByJsonp_(){ return callJsonp_({ action:"me", userId: myUserId, displayName: myDisplayName || "" }); }
+  function getApplyByJsonp_(){ return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" }); }
+  function getLookupByJsonp_(staffCode){ return callJsonp_({ action:"lookup", staffCode: String(staffCode||"") }); }
+  function getRegisterByJsonp_(staffCode){
+    return callJsonp_({ action:"register", userId: myUserId, displayName: myDisplayName || "", staffCode: String(staffCode||"") });
+  }
+
+  function renderRows(rows){
+    if(!rows || !rows.length){
+      elTbody.innerHTML = `<tr><td class="muted" colspan="4" style="text-align:center">出勤者がいません</td></tr>`;
+      return;
+    }
+    elTbody.innerHTML = rows.map(r => {
+      const staffCode = String(r.staffCode || "");
+      const isSelf = (meOk && myStaffCode && staffCode === myStaffCode);
+      const confirmed = !!r.confirmed;
+
+      let btnHtml = "";
+      if (confirmed) btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
+      else if (isSelf) btnHtml = `<button class="btnSmall btnRed" data-action="apply">申請</button>`;
+      else btnHtml = `<button class="btnSmall btnGray" disabled>未</button>`;
+
+      const nameCell = esc(r.name||"") + (isSelf ? `<span class="selfTag">自分</span>` : "");
+      return `
+        <tr>
+          <td>${esc(r.store||"")}</td>
+          <td>${esc(r.start||"")}</td>
+          <td>${nameCell}</td>
+          <td style="text-align:right">${btnHtml}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // ✅ 入力欄は「いつでも表示」できるようにする（前の挙動に戻す）
+  function setupRegisterUi_(){
+    showRegister_(true);
+
+    const updateRegBtn = () => {
+      const v = String(elRegCode.value || "").trim();
+      const okDigits = (v && /^\d+$/.test(v));
+      const okLiff   = (!!myUserId); // userIdが取れてないと登録できない
+      elRegBtn.disabled = !(okDigits && okLiff);
+
+      if (!okLiff) {
+        elRegHint.textContent = "※ LINEで開くと自動でuserId（U〜）を取得して登録できます";
+      } else {
+        elRegHint.textContent = "※ LINE userId（U〜）は自動取得して登録します";
+      }
+    };
+
+    elRegCode.addEventListener("input", () => {
+      elRegCode.value = String(elRegCode.value || "").replace(/[^\d]/g, "");
+      updateRegBtn();
+    });
+
+    updateRegBtn();
+
+    // 確認 → lookup → モーダル
+    elRegBtn.addEventListener("click", async () => {
+      if (inflight) return;
+      const staffCode = String(elRegCode.value || "").trim();
+      if (!staffCode || !/^\d+$/.test(staffCode)) return;
+      if (!myUserId) { setStatus("LINEで開いてください"); return; }
+
+      inflight = true;
+      setLoading(true);
+      setStatus("照合中…");
+
+      try{
+        const res = await getLookupByJsonp_(staffCode);
+        if (!res || res.ok === false) throw new Error(res?.message || res?.error || "lookup_ng");
+
+        pendingStaffCode = staffCode;
+        pendingStaffName = String(res.name || "").trim();
+
+        if (res.alreadyLinked) {
+          elModalText.textContent = `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n\n※このスタッフコードは既に登録済みです。`;
+          elModalOk.disabled = true;
+        } else {
+          elModalText.textContent = `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n登録してよろしいでしょうか？`;
+          elModalOk.disabled = false;
+        }
+
+        showModal_(true);
+        setStatus("");
+      }catch(e){
+        setStatus("照合失敗");
+        setDebug(String(e));
+      }finally{
+        setLoading(false);
+        inflight = false;
+      }
+    });
+  }
+
+  async function initLiff_(){
+    // ✅ ここが「戻した」ポイント：失敗してもUIは残す
+    try{
+      if (typeof liff === "undefined") throw new Error("liff_sdk_not_loaded");
+      await liff.init({ liffId: LIFF_ID });
+
+      if (!liff.isLoggedIn()) {
+        elLoginName.textContent = "（LINEで開いてください）";
+        setStatus("LINEで開いてください");
+        return; // UIは setupRegisterUi_() で既に出てる
+      }
+
+      const prof = await liff.getProfile();
+      myUserId = prof.userId || "";
+      myDisplayName = prof.displayName || "";
+
+      // 登録済みならme取得
+      const me = await getMeByJsonp_();
+      if (me && me.ok) {
+        meOk = true;
+        myStaffCode = me.staffCode || "";
+        myName = me.name || "";
+        elLoginName.textContent = `${myDisplayName}${myStaffCode ? "（" + myStaffCode + "）" : ""}`;
+        showRegister_(false);
+      } else {
+        meOk = false;
+        myStaffCode = "";
+        myName = "";
+        elLoginName.textContent = `${myDisplayName}（未登録）`;
+        setStatus(me?.message || "staff未登録");
+        // 登録UIは表示したまま
+      }
+
+      // userIdが入ったので、確認ボタンのdisabled状態を更新
+      const evt = new Event("input");
+      elRegCode.dispatchEvent(evt);
+
+    }catch(e){
+      // 失敗しても、入力欄は消さない（前の挙動）
+      elLoginName.textContent = "（LIFF未接続）";
+      setStatus("LINEで開いてください");
+      setDebug(String(e));
+    }
+  }
+
+  elModalBack.addEventListener("click", () => {
+    showModal_(false);
+    pendingStaffCode = "";
+    pendingStaffName = "";
+  });
+
+  elModalOk.addEventListener("click", async () => {
+    if (inflight) return;
+    if (!pendingStaffCode) return;
+    if (!myUserId) { setStatus("LINEで開いてください"); return; }
+
+    inflight = true;
+    setLoading(true);
+    setStatus("登録中…");
+
+    try{
+      const res = await getRegisterByJsonp_(pendingStaffCode);
+      if (!res || res.ok === false) throw new Error(res?.message || res?.error || "register_ng");
+
+      const me2 = await getMeByJsonp_();
+      if (me2 && me2.ok) {
+        meOk = true;
+        myStaffCode = me2.staffCode || "";
+        myName = me2.name || "";
+        elLoginName.textContent = `${myDisplayName}${myStaffCode ? "（" + myStaffCode + "）" : ""}`;
+        showRegister_(false);
+      }
+
+      showModal_(false);
+      pendingStaffCode = "";
+      pendingStaffName = "";
+
+      setStatus("登録しました");
+      await loadAll();
+
+    }catch(e){
+      setStatus("登録失敗");
+      setDebug(String(e));
+    }finally{
+      setLoading(false);
+      inflight = false;
+    }
+  });
+
+  async function loadAll(){
+    if(inflight) return;
+    inflight = true;
+    setLoading(true);
+    setStatus("読み込み中…");
+
+    try{
+      const list = await getListByJsonp_();
+      if (!list || list.ok === false) throw new Error(list?.message || list?.error || "server_ng");
+
+      elViewDate.textContent = list.viewDate || list.today || "-";
+      renderRows(list.rows || []);
+      setStatus("一覧を更新しました");
+      setDebug(JSON.stringify({ me:{meOk,myUserId,myStaffCode,myName,myDisplayName}, list }, null, 2));
+
+    }catch(e){
+      setStatus("読み込み失敗");
+      renderRows([]);
+      setDebug(String(e));
+    }finally{
+      setLoading(false);
+      inflight = false;
+    }
+  }
+
+  elTbody.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-action='apply']");
+    if(!btn) return;
+    if(!meOk || !myStaffCode) return;
+    if(inflight) return;
+
+    inflight = true;
+    setLoading(true);
+    setStatus("申請中…");
+
+    try{
+      const res = await getApplyByJsonp_();
+      if (!res || res.ok === false) throw new Error(res?.message || res?.error || "apply_ng");
+      await loadAll();
+      setStatus("申請しました（完了）");
+    }catch(e){
+      setStatus("申請失敗");
+      setDebug(String(e));
+    }finally{
+      setLoading(false);
+      inflight = false;
+    }
+  });
+
+  document.getElementById("btnReload").addEventListener("click", loadAll);
+  document.getElementById("btnDebug").addEventListener("click", () => {
+    debugOn = !debugOn;
+    elDebug.style.display = debugOn ? "block" : "none";
+  });
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    setupRegisterUi_();   // ✅ 先に入力欄を出す（前の挙動）
+    await initLiff_();    // ✅ 失敗しても入力欄は残る
+    await loadAll();
+  });
+</script>
+</body>
+</html>
