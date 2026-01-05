@@ -1,7 +1,4 @@
-<!-- ===============================
-GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン有効化最小修正）
-配置先：https://hachisuba.github.io/liff-test/
-=============================== -->
+<!-- ③ GitHub index.html：差分が多くなるので “完全版” を出します（変数は変更なし） -->
 <!doctype html>
 <html lang="ja">
 <head>
@@ -122,9 +119,6 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
   let myDisplayName = "";
   let myStaffCode = "";
 
-  // ✅ 追加（最小）：自分判定を「名前一致」でも出来るようにする
-  let myStaffName = "";
-
   let pendingStaffCode = "";
   let pendingStaffName = "";
 
@@ -138,7 +132,6 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
   const elRegBox     = document.getElementById("regBox");
   const elRegCode    = document.getElementById("regStaffCode");
   const elRegBtn     = document.getElementById("regBtn");
-  const elRegHint    = document.getElementById("regHint");
 
   const elModalBg    = document.getElementById("modalBg");
   const elModalText  = document.getElementById("modalText");
@@ -184,16 +177,12 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
   }
 
   function getListByJsonp_(){ return callJsonp_({ action:"list" }); }
+  function getMeByJsonp_(){ return callJsonp_({ action:"me", userId: myUserId, displayName: myDisplayName || "" }); }
   function getLookupByJsonp_(staffCode){ return callJsonp_({ action:"lookup", staffCode: String(staffCode||"") }); }
   function getRegisterByJsonp_(staffCode){
     return callJsonp_({ action:"register", userId: myUserId, displayName: myDisplayName || "", staffCode: String(staffCode||"") });
   }
-  function getApplyByJsonp_(){
-    return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" });
-  }
-  function getMeByJsonp_(){
-    return callJsonp_({ action:"me", userId: myUserId, displayName: myDisplayName || "" });
-  }
+  function getApplyByJsonp_(){ return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" }); }
 
   function renderRows(rows){
     if(!rows || !rows.length){
@@ -202,14 +191,11 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
     }
 
     elTbody.innerHTML = rows.map(r => {
-      const staffCode = String(r.staffCode || "");
+      const staffCode = String(r.staffCode || "").trim();
       const confirmed = !!r.confirmed;
-      const rowName   = String(r.name || "").trim();
 
-      // ✅ 最小修正：staffCode一致が取れない場合でも、登録で確定した「staffの名前」で自分判定
-      const isSelf =
-        (myStaffCode && staffCode && myStaffCode === staffCode) ||
-        (myStaffName && rowName && myStaffName === rowName);
+      // ✅ 自分判定は staffCode 一致のみ（最強に確実）
+      const isSelf = (myStaffCode && staffCode && myStaffCode === staffCode);
 
       let btnHtml = "";
       if (confirmed) {
@@ -244,8 +230,7 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
       elViewDate.textContent = list.viewDate || list.today || "-";
       renderRows(list.rows || []);
       setStatus("一覧を更新しました");
-
-      setDebug(JSON.stringify({ me:{ myUserId, myStaffCode, myStaffName, myDisplayName }, list }, null, 2));
+      setDebug(JSON.stringify({ me:{ myUserId, myStaffCode, myDisplayName }, list }, null, 2));
     }catch(e){
       setStatus("読み込み失敗");
       renderRows([]);
@@ -256,27 +241,18 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
     }
   }
 
-  // ✅ 最小調整：meが成功したらフォーム非表示、失敗なら表示
-  // （ただし登録直後は me 失敗でも UI側で確定して消すので問題なし）
-  async function refreshMeAndRegisterUi_(){
-    myStaffCode = myStaffCode || "";
-    myStaffName = myStaffName || "";
-
+  // ✅ 登録フォーム表示ルール（ここだけ）
+  async function refreshMeUi_(){
+    myStaffCode = "";
     try{
       const me = await getMeByJsonp_();
-      if (me && me.ok) {
-        // 返り値ゆれを吸収
-        if (me.staffCode) myStaffCode = String(me.staffCode || "");
-        if (me.name)      myStaffName = String(me.name || "").trim();
-        showRegister_(false);
-        elLoginName.textContent = myDisplayName || "-";
+      if (me && me.ok && me.staffCode) {
+        myStaffCode = String(me.staffCode||"").trim();
+        showRegister_(false); // ✅ 登録済みなら必ず非表示
         return;
       }
     }catch(_){}
-
-    // 未登録（このuserIdがstaffの3列目に無い）なら表示
-    showRegister_(true);
-    elLoginName.textContent = myDisplayName || "-";
+    showRegister_(true); // 未登録なら表示
   }
 
   async function initLiff_(){
@@ -295,19 +271,19 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
       myDisplayName = prof.displayName || "";
       elLoginName.textContent = myDisplayName || "-";
 
-      await refreshMeAndRegisterUi_();
+      await refreshMeUi_();
 
       const refreshRegBtn = () => {
         const v = String(elRegCode.value || "").trim();
         elRegBtn.disabled = !(v && /^\d+$/.test(v) && myUserId);
       };
-
       elRegCode.addEventListener("input", () => {
-        elRegCode.value = String(elRegCode.value || "").replace(/[^\d]/g, "");
+        elRegCode.value = String(elRegCode.value||"").replace(/[^\d]/g,"");
         refreshRegBtn();
       });
       refreshRegBtn();
 
+      // 確認 → lookup
       elRegBtn.addEventListener("click", async () => {
         if(inflight) return;
         const staffCode = String(elRegCode.value || "").trim();
@@ -321,13 +297,20 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
           const res = await getLookupByJsonp_(staffCode);
           if (!res || res.ok === false) throw new Error(res?.message || res?.error || "lookup_ng");
 
+          // ✅ 既に登録済みなら「登録できない」ではなく「フォームを消す」
+          if (res.alreadyLinked) {
+            setStatus("登録済みです");
+            showRegister_(false);
+            await refreshMeUi_();  // myStaffCode を確定
+            await loadAll();       // ボタンを赤に
+            return;
+          }
+
           pendingStaffCode = staffCode;
           pendingStaffName = String(res.name || "").trim();
-
           elModalText.textContent =
             `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n登録してよろしいでしょうか？`;
-
-          elModalOk.disabled = !!res.alreadyLinked;
+          elModalOk.disabled = false;
           showModal_(true);
           setStatus("");
         }catch(e){
@@ -353,8 +336,6 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
     pendingStaffName = "";
   });
 
-  // ✅ ここが一番重要（最小修正の核）
-  // register成功した瞬間に「登録済み」を確定してフォームを消す（me待ちしない）
   elModalOk.addEventListener("click", async () => {
     if(inflight) return;
     if(!pendingStaffCode) return;
@@ -367,22 +348,15 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
       const res = await getRegisterByJsonp_(pendingStaffCode);
       if (!res || res.ok === false) throw new Error(res?.message || res?.error || "register_ng");
 
-      // ✅ 登録完了をUI側で確定
-      myStaffCode = String(res.staffCode || pendingStaffCode || "");
-      myStaffName = String(res.name || pendingStaffName || "").trim();
-
-      showRegister_(false); // ✅ ここで必ず非表示
       showModal_(false);
-
       pendingStaffCode = "";
       pendingStaffName = "";
 
+      // ✅ 登録直後に me を取り直してフォーム非表示＆ボタン有効化
+      await refreshMeUi_();
+      await loadAll();
+
       setStatus("登録しました");
-
-      // 念のため me を再取得（成功すれば整合、失敗でも UI は消えてるのでOK）
-      try { await refreshMeAndRegisterUi_(); } catch(_) {}
-
-      await loadAll(); // ✅ 自分判定が「名前一致」でも効くのでボタン有効化される
     }catch(e){
       setStatus("登録失敗");
       setDebug(String(e));
@@ -396,7 +370,6 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
     const btn = ev.target.closest("button[data-action='apply']");
     if(!btn) return;
     if(inflight) return;
-    if(!myUserId) return;
 
     inflight = true;
     setLoading(true);
@@ -416,7 +389,11 @@ GitHub側 index.html（LIFF対応 / 登録後非表示確定 / 自分ボタン�
     }
   });
 
-  document.getElementById("btnReload").addEventListener("click", loadAll);
+  document.getElementById("btnReload").addEventListener("click", async () => {
+    await refreshMeUi_();
+    await loadAll();
+  });
+
   document.getElementById("btnDebug").addEventListener("click", () => {
     debugOn = !debugOn;
     elDebug.style.display = debugOn ? "block" : "none";
