@@ -1,5 +1,5 @@
 <!-- ===============================
-GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非表示）
+GitHub側 index.html（LIFF対応 / ボタン復活 / 登録表示ルール：staff未登録なら表示）
 配置先：https://hachisuba.github.io/liff-test/
 =============================== -->
 <!doctype html>
@@ -30,13 +30,11 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     .spin{display:none;margin:8px auto 0;width:18px;height:18px;border-radius:50%;border:3px solid #ddd;border-top-color:#333;animation:rot .8s linear infinite;}
     @keyframes rot{to{transform:rotate(360deg)}}
 
-    /* ボタン（ひとつ前の見た目に寄せる） */
     .btnSmall{border:0;border-radius:10px;padding:8px 10px;font-weight:800;font-size:13px;color:#fff;cursor:pointer;min-width:72px;}
     .btnRed{background:#d32f2f;}
     .btnDone{background:#2e7d32;}
     .btnGray{background:#bdbdbd; cursor:not-allowed;}
 
-    /* 登録フォーム */
     .regBox{display:none;margin-top:14px;padding:12px;border-radius:14px;background:#fff5f5;border:1px solid #ffd3d3;}
     .regTitle{font-weight:900;color:#b71c1c;margin-bottom:8px;text-align:center;}
     .regRow{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
@@ -45,7 +43,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     .regBtn:disabled{background:#bdbdbd;cursor:not-allowed;}
     .regHint{margin-top:8px;color:#666;font-size:13px;text-align:center;}
 
-    /* ポップアップ */
     .modalBg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;padding:18px;z-index:9999;}
     .modal{background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.2);max-width:420px;width:100%;padding:16px;}
     .modalTitle{font-weight:900;font-size:16px;text-align:center;margin-bottom:8px;}
@@ -65,7 +62,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
       <div class="sub">ログイン中：<span id="loginName">-</span></div>
       <div class="center"><span class="pill">表示日：<span id="viewDate">-</span></span></div>
 
-      <!-- 登録フォーム（初回だけ表示させる） -->
       <div class="regBox" id="regBox">
         <div class="regTitle">スタッフ登録が必要です</div>
         <div class="regRow">
@@ -82,7 +78,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
 
       <div class="spin" id="loading"></div>
 
-      <!-- ✅ ボタン列を復活（4列） -->
       <table>
         <thead>
           <tr>
@@ -102,7 +97,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     </div>
   </div>
 
-  <!-- 確認ポップアップ -->
   <div class="modalBg" id="modalBg">
     <div class="modal">
       <div class="modalTitle">確認</div>
@@ -124,15 +118,10 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
   let debugOn = false;
   let inflight = false;
 
-  // LIFF情報
   let myUserId = "";
   let myDisplayName = "";
-
-  // 自分判定（listのrow.staffCode と myStaffCode を一致で見る）
-  // ※GASがstaffCodeを返せてる前提（ひとつ前は出てたとのことなので戻す）
   let myStaffCode = "";
 
-  // 登録ポップアップ用
   let pendingStaffCode = "";
   let pendingStaffName = "";
 
@@ -167,7 +156,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
   function showRegister_(on){ elRegBox.style.display = on ? "block" : "none"; }
   function showModal_(on){ elModalBg.style.display = on ? "flex" : "none"; }
 
-  // JSONP（listと同じ方式で動作を壊さない）
   function callJsonp_(paramsObj) {
     return new Promise((resolve, reject) => {
       const cb = "__cb_" + Date.now() + "_" + Math.floor(Math.random()*1000);
@@ -197,16 +185,13 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
   function getRegisterByJsonp_(staffCode){
     return callJsonp_({ action:"register", userId: myUserId, displayName: myDisplayName || "", staffCode: String(staffCode||"") });
   }
-  // 申請（ひとつ前で出てた前提のまま呼ぶ）
   function getApplyByJsonp_(){
     return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" });
   }
-  // 自分のstaffCode取得（存在する場合のみ使う。無ければ list 側で自己判定しない）
   function getMeByJsonp_(){
     return callJsonp_({ action:"me", userId: myUserId, displayName: myDisplayName || "" });
   }
 
-  // ✅ ボタン表示を復活
   function renderRows(rows){
     if(!rows || !rows.length){
       elTbody.innerHTML = `<tr><td class="muted" colspan="4" style="text-align:center">出勤者がいません</td></tr>`;
@@ -216,7 +201,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     elTbody.innerHTML = rows.map(r => {
       const staffCode = String(r.staffCode || "");
       const confirmed = !!r.confirmed;
-
       const isSelf = (myStaffCode && staffCode && myStaffCode === staffCode);
 
       let btnHtml = "";
@@ -264,16 +248,27 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     }
   }
 
-  // ✅ 登録フォーム：初回だけ表示（同端末）
-  function shouldShowRegister_(){
-    if (!myUserId) return false;
-    const key = "registered_" + myUserId;
-    return localStorage.getItem(key) !== "1";
-  }
-  function markRegistered_(){
-    if (!myUserId) return;
-    const key = "registered_" + myUserId;
-    localStorage.setItem(key, "1");
+  // ✅ ここが今回の変更点：フォーム表示ルールは「staff3列目にUが無いなら表示」
+  async function refreshMeAndRegisterUi_(){
+    myStaffCode = "";
+    showRegister_(false);
+
+    try{
+      const me = await getMeByJsonp_();
+      if (me && me.ok) {
+        myStaffCode = String(me.staffCode || "");
+        showRegister_(false);
+        // 表示名も整える（任意。変数はいじらない）
+        elLoginName.textContent = `${myDisplayName}${myStaffCode ? "（" + myStaffCode + "）" : ""}`;
+        return;
+      }
+    }catch(_){
+      // meが失敗しても、未登録扱いで表示する
+    }
+
+    // 未登録（= staffシート3列目が空 or 見つからない）→ フォーム表示
+    showRegister_(true);
+    elLoginName.textContent = `${myDisplayName}（未登録）`;
   }
 
   async function initLiff_(){
@@ -292,20 +287,10 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
       myDisplayName = prof.displayName || "";
       elLoginName.textContent = myDisplayName || "-";
 
-      // 可能なら自分のstaffCodeをサーバから取得（ある場合だけ）
-      try{
-        const me = await getMeByJsonp_();
-        if (me && me.ok && me.staffCode) {
-          myStaffCode = String(me.staffCode || "");
-        }
-      }catch(_){
-        // me が無い環境でも list は動くのでスルー
-      }
+      // ✅ me判定して、登録フォームの表示/非表示を決定
+      await refreshMeAndRegisterUi_();
 
-      // 初回だけ登録フォーム表示
-      showRegister_(shouldShowRegister_());
-
-      // ボタン活性
+      // 入力制御（数字だけ）
       const refreshRegBtn = () => {
         const v = String(elRegCode.value || "").trim();
         elRegBtn.disabled = !(v && /^\d+$/.test(v) && myUserId);
@@ -337,9 +322,7 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
           elModalText.textContent =
             `あなたは「${pendingStaffName || "（名前未設定）"}」さんですね。\n登録してよろしいでしょうか？`;
 
-          // 既に登録済みなら登録ボタン無効
           elModalOk.disabled = !!res.alreadyLinked;
-
           showModal_(true);
           setStatus("");
         }catch(e){
@@ -352,7 +335,6 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
       });
 
     }catch(e){
-      // ここは余計にいじらず、最低限
       elLoginName.textContent = "（LINEで開いてください）";
       setStatus("LINEで開いてください");
       showRegister_(false);
@@ -360,14 +342,13 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     }
   }
 
-  // モーダル：戻る
   elModalBack.addEventListener("click", () => {
     showModal_(false);
     pendingStaffCode = "";
     pendingStaffName = "";
   });
 
-  // モーダル：登録 → register → ✅ フォーム非表示 + 一覧再読み込み
+  // ✅ 登録 → register → me再取得 → フォーム非表示（staff3列目が入ったら消える）
   elModalOk.addEventListener("click", async () => {
     if(inflight) return;
     if(!pendingStaffCode) return;
@@ -380,19 +361,15 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
       const res = await getRegisterByJsonp_(pendingStaffCode);
       if (!res || res.ok === false) throw new Error(res?.message || res?.error || "register_ng");
 
-      // ✅ 登録完了：初回表示フラグを保存してフォームを消す
-      markRegistered_();
-      showRegister_(false);
-
-      // 自分のstaffCodeが返るなら更新
-      if (res.staffCode) myStaffCode = String(res.staffCode || "");
-
       showModal_(false);
       pendingStaffCode = "";
       pendingStaffName = "";
 
+      // ✅ ここが重要：登録直後にmeを取り直して、フォームを消す（手動削除にも追従できる）
+      await refreshMeAndRegisterUi_();
+
       setStatus("登録しました");
-      await loadAll(); // ✅ ボタン表示含めて一覧を即更新
+      await loadAll(); // ボタン表示も含めて更新
     }catch(e){
       setStatus("登録失敗");
       setDebug(String(e));
@@ -402,7 +379,7 @@ GitHub側 index.html（LIFF対応 / ボタン復活 / 登録後フォーム非�
     }
   });
 
-  // ✅ 申請ボタン
+  // 申請ボタン
   elTbody.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button[data-action='apply']");
     if(!btn) return;
