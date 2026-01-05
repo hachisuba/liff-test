@@ -192,39 +192,48 @@
   }
   function getApplyByJsonp_(){ return callJsonp_({ action:"apply", userId: myUserId, displayName: myDisplayName || "" }); }
 
-  function renderRows(rows){
-    if(!rows || !rows.length){
-      elTbody.innerHTML = `<tr><td class="muted" colspan="4" style="text-align:center">出勤者がいません</td></tr>`;
-      return;
+function renderRows(rows){
+  if(!rows || !rows.length){
+    elTbody.innerHTML = `<tr><td class="muted" colspan="4" style="text-align:center">出勤者がいません</td></tr>`;
+    return;
+  }
+
+  const myCode = normStaffCode_(myStaffCode); // ✅ 正規化してから比較
+  elTbody.innerHTML = rows.map(r => {
+    const rowCode = normStaffCode_(r.staffCode); // ✅ 正規化してから比較
+    const confirmed = !!r.confirmed;
+
+    // ✅ 本人判定（そのまま）
+    const isSelf = (myCode && rowCode && myCode === rowCode);
+
+    let btnHtml = "";
+    if (confirmed) {
+      btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
+    } else if (isSelf) {
+      btnHtml = `<button class="btnSmall btnRed" data-action="apply">申請</button>`;
+    } else {
+      btnHtml = `<button class="btnSmall btnGray" disabled>未</button>`;
     }
 
-    const myCode = normStaffCode_(myStaffCode); // ✅ 正規化してから比較
-    elTbody.innerHTML = rows.map(r => {
-      const rowCode = normStaffCode_(r.staffCode); // ✅ 正規化してから比較
-      const confirmed = !!r.confirmed;
+    // ✅ 追加：スタッフコードを名前の上に表示（rowCodeがある時だけ）
+    const staffCodeHtml = rowCode
+      ? `<div style="font-size:12px;color:#666;font-weight:700;line-height:1.1;">${esc(rowCode)}</div>`
+      : "";
 
-      // ✅ ここが修正点：本人判定が正しく成立する
-      const isSelf = (myCode && rowCode && myCode === rowCode);
+    return `
+      <tr>
+        <td>${esc(r.store||"")}</td>
+        <td>${esc(r.start||"")}</td>
+        <td>
+          ${staffCodeHtml}
+          <div>${esc(r.name||"")}</div>
+        </td>
+        <td style="text-align:right">${btnHtml}</td>
+      </tr>
+    `;
+  }).join("");
+}
 
-      let btnHtml = "";
-      if (confirmed) {
-        btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
-      } else if (isSelf) {
-        btnHtml = `<button class="btnSmall btnRed" data-action="apply">申請</button>`;
-      } else {
-        btnHtml = `<button class="btnSmall btnGray" disabled>未</button>`;
-      }
-
-      return `
-        <tr>
-          <td>${esc(r.store||"")}</td>
-          <td>${esc(r.start||"")}</td>
-          <td>${esc(r.name||"")}</td>
-          <td style="text-align:right">${btnHtml}</td>
-        </tr>
-      `;
-    }).join("");
-  }
 
   async function loadAll(){
     if(inflight) return;
