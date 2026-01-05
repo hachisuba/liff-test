@@ -31,6 +31,15 @@
     .btnDone{background:#2e7d32;}
     .btnGray{background:#bdbdbd; cursor:not-allowed;}
     .selfTag{display:inline-block;font-size:11px;font-weight:800;margin-left:6px;background:#ffe8e8;color:#b71c1c;border-radius:999px;padding:2px 8px;}
+
+    /* 追加：登録エリア */
+    .regBox{display:none;margin-top:14px;padding:12px;border-radius:14px;background:#fff5f5;border:1px solid #ffd3d3;}
+    .regTitle{font-weight:900;color:#b71c1c;margin-bottom:8px;text-align:center;}
+    .regRow{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+    .regInput{width:220px;max-width:70vw;padding:10px 12px;border-radius:10px;border:1px solid #ddd;font-size:15px;}
+    .regBtn{background:#d32f2f;color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:900;cursor:pointer;}
+    .regBtn:disabled{background:#bdbdbd;cursor:not-allowed;}
+    .regHint{margin-top:8px;color:#666;font-size:13px;text-align:center;}
   </style>
 </head>
 <body>
@@ -40,6 +49,16 @@
 
       <div class="sub">ログイン中：<span id="loginName">-</span></div>
       <div class="center"><span class="pill">表示日：<span id="viewDate">-</span></span></div>
+
+      <!-- 追加：未登録時のスタッフ登録画面 -->
+      <div class="regBox" id="regBox">
+        <div class="regTitle">スタッフ登録が必要です</div>
+        <div class="regRow">
+          <input class="regInput" id="regStaffCode" placeholder="スタッフコード（Uから始まる）" autocomplete="off" />
+          <button class="regBtn" id="regBtn" disabled>登録</button>
+        </div>
+        <div class="regHint">※ 初回だけ：入力すると staffシート（3列目）に LINE userId を記録します</div>
+      </div>
 
       <div class="btnrow">
         <button class="btn blue" id="btnReload">再読み込み</button>
@@ -68,10 +87,7 @@
   </div>
 
 <script>
-  // ★ここは必ず「GAS WebApp URL（/exec）」を入れる
   const GAS_URL = "https://script.google.com/macros/s/AKfycbwqydPjkvk1bDvN4zlBxht64q5o-Grqe0O4oMG408zp09oFci9uB5-UG8qwiQf1vUEWEA/exec";
-
-  // ★あなたのLIFF ID（固定）
   const LIFF_ID = "2008802899-oJWsorEf";
 
   let debugOn = false;
@@ -90,6 +106,11 @@
   const elDebug     = document.getElementById("debugBox");
   const elLoading   = document.getElementById("loading");
 
+  // 登録UI
+  const elRegBox = document.getElementById("regBox");
+  const elRegCode = document.getElementById("regStaffCode");
+  const elRegBtn  = document.getElementById("regBtn");
+
   function setLoading(on){ elLoading.style.display = on ? "block" : "none"; }
   function setStatus(msg){ elStatus.textContent = msg || ""; }
   function setDebug(text){
@@ -102,7 +123,11 @@
       .replaceAll('"',"&quot;").replaceAll("'","&#39;");
   }
 
-  // JSONPヘルパー
+  function showRegister_(on){
+    elRegBox.style.display = on ? "block" : "none";
+  }
+
+  // JSONP
   function jsonp_(url) {
     return new Promise((resolve, reject) => {
       const cb = "__cb_" + Date.now() + "_" + Math.floor(Math.random()*1000);
@@ -123,27 +148,28 @@
     });
   }
 
-  // GAS: me
   async function fetchMe_(){
     if(!myUserId) return { ok:false, message:"no userId" };
     const url = `${GAS_URL}?action=me&userId=${encodeURIComponent(myUserId)}&displayName=${encodeURIComponent(myDisplayName||"")}`;
-    const data = await jsonp_(url);
-    return data;
+    return await jsonp_(url);
   }
 
-  // GAS: list
   async function fetchList_(){
     const url = `${GAS_URL}?action=list`;
-    const data = await jsonp_(url);
-    return data;
+    return await jsonp_(url);
   }
 
-  // GAS: apply（自分の申請）
   async function apply_(){
     if(!myUserId) throw new Error("no userId");
     const url = `${GAS_URL}?action=apply&userId=${encodeURIComponent(myUserId)}&displayName=${encodeURIComponent(myDisplayName||"")}`;
-    const data = await jsonp_(url);
-    return data;
+    return await jsonp_(url);
+  }
+
+  // ★追加：登録
+  async function register_(staffCode){
+    if(!myUserId) throw new Error("no userId");
+    const url = `${GAS_URL}?action=register&userId=${encodeURIComponent(myUserId)}&displayName=${encodeURIComponent(myDisplayName||"")}&staffCode=${encodeURIComponent(staffCode||"")}`;
+    return await jsonp_(url);
   }
 
   function renderRows(rows){
@@ -157,16 +183,11 @@
       const isSelf = (meOk && myStaffCode && staffCode === myStaffCode);
       const confirmed = !!r.confirmed;
 
-      // ボタンルール：
-      // 自分×未完了 → 申請（赤）押せる
-      // 自分×完了   → 完了（緑）押せない
-      // 他人×未完了 → グレー 押せない
-      // 他人×完了   → 完了（緑）押せない（表示のみ）
       let btnHtml = "";
       if (confirmed) {
         btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
       } else if (isSelf) {
-        btnHtml = `<button class="btnSmall btnRed" data-action="apply" data-code="${esc(staffCode)}">申請</button>`;
+        btnHtml = `<button class="btnSmall btnRed" data-action="apply">申請</button>`;
       } else {
         btnHtml = `<button class="btnSmall btnGray" disabled>未</button>`;
       }
@@ -189,8 +210,8 @@
       await liff.init({ liffId: LIFF_ID });
 
       if (!liff.isLoggedIn()) {
-        // 外部ブラウザ等
         elLoginName.textContent = "（LINEで開いてください）";
+        showRegister_(false);
         return;
       }
 
@@ -198,22 +219,74 @@
       myUserId = prof.userId || "";
       myDisplayName = prof.displayName || "";
 
-      // GASに「このuserIdは誰？」を問い合わせ
       const me = await fetchMe_();
       if (me && me.ok) {
         meOk = true;
         myStaffCode = me.staffCode || "";
         myName = me.name || "";
         elLoginName.textContent = `${myDisplayName}${myStaffCode ? "（" + myStaffCode + "）" : ""}`;
+        showRegister_(false);
       } else {
+        // 未登録なら登録画面を出す
         meOk = false;
+        myStaffCode = "";
+        myName = "";
         elLoginName.textContent = `${myDisplayName}（未登録）`;
         setStatus(me?.message || "staff未登録");
+        showRegister_(true);
       }
+
+      // 登録ボタン活性制御
+      const updateRegBtn = () => {
+        const v = String(elRegCode.value || "").trim();
+        elRegBtn.disabled = !(v && /^U/i.test(v));
+      };
+      elRegCode.addEventListener("input", updateRegBtn);
+      updateRegBtn();
+
+      // 登録実行
+      elRegBtn.addEventListener("click", async () => {
+        if (inflight) return;
+        const staffCode = String(elRegCode.value || "").trim();
+        if (!staffCode || !/^U/i.test(staffCode)) return;
+
+        inflight = true;
+        setLoading(true);
+        setStatus("登録中…");
+
+        try{
+          const res = await register_(staffCode);
+          if (!res || res.ok === false) {
+            throw new Error(res?.message || res?.error || "register_ng");
+          }
+
+          // 登録成功 → me再取得 → 一覧再取得
+          const me2 = await fetchMe_();
+          if (me2 && me2.ok) {
+            meOk = true;
+            myStaffCode = me2.staffCode || "";
+            myName = me2.name || "";
+            elLoginName.textContent = `${myDisplayName}${myStaffCode ? "（" + myStaffCode + "）" : ""}`;
+            showRegister_(false);
+            setStatus("登録しました");
+            await loadAll();
+          } else {
+            throw new Error(me2?.message || "me_after_register_ng");
+          }
+
+        }catch(e){
+          setStatus("登録失敗");
+          setDebug(String(e));
+        }finally{
+          setLoading(false);
+          inflight = false;
+        }
+      });
 
     }catch(e){
       elLoginName.textContent = "（LIFF初期化失敗）";
       setDebug(String(e));
+      showRegister_(false);
     }
   }
 
@@ -244,15 +317,12 @@
     }
   }
 
-  // 申請ボタン（イベント委譲）
+  // 申請ボタン
   elTbody.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button[data-action='apply']");
     if(!btn) return;
 
-    // 自分以外は押せない設計（UI側）
     if(!meOk || !myStaffCode) return;
-
-    // 二重押し防止
     if(inflight) return;
 
     inflight = true;
@@ -264,7 +334,6 @@
       if (!res || res.ok === false) {
         throw new Error(res?.message || res?.error || "apply_ng");
       }
-      // 申請したら再読み込みして完了表示に切替
       await loadAll();
       setStatus("申請しました（完了）");
     }catch(e){
