@@ -48,9 +48,77 @@
     .mBack{background:#e0e0e0;color:#333;}
     .mOk{background:#d32f2f;color:#fff;}
     .mOk:disabled{background:#bdbdbd;cursor:not-allowed;}
+
+    /* ===============================
+       ★追加：処理中ポップアップ（半透明＋くるくる＋進捗）
+       =============================== */
+    #procOverlay{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.35);
+      z-index:20000; /* modalより上 */
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      pointer-events:all; /* 裏の操作を止める */
+    }
+    #procCard{
+      background:#fff;
+      border-radius:16px;
+      box-shadow:0 10px 30px rgba(0,0,0,.2);
+      max-width:420px;
+      width:min(92vw, 360px);
+      padding:16px;
+      text-align:center;
+    }
+    #procSpinner{
+      width:42px;height:42px;
+      border-radius:999px;
+      border:5px solid #eee;
+      border-top-color:#555;
+      animation:rot .9s linear infinite;
+      margin:0 auto 10px;
+    }
+    #procMsg{
+      font-weight:900;
+      font-size:14px;
+      color:#333;
+      margin-bottom:10px;
+      white-space:pre-line;
+    }
+    #procBar{
+      width:100%;
+      height:10px;
+      background:#eee;
+      border-radius:999px;
+      overflow:hidden;
+    }
+    #procFill{
+      height:100%;
+      width:0%;
+      background:#555;
+      transition:width .2s ease;
+    }
+    #procPct{
+      font-size:12px;
+      color:#666;
+      margin-top:6px;
+    }
   </style>
 </head>
 <body>
+
+  <!-- ★追加：処理中ポップアップ（必要な時だけJSで表示） -->
+  <div id="procOverlay" aria-hidden="true">
+    <div id="procCard" role="dialog" aria-modal="true" aria-label="処理中">
+      <div id="procSpinner" aria-hidden="true"></div>
+      <div id="procMsg">処理中…</div>
+      <div id="procBar" aria-hidden="true"><div id="procFill"></div></div>
+      <div id="procPct">0%</div>
+    </div>
+  </div>
+
   <div class="wrap">
     <div class="card">
       <h1>出勤一覧</h1>
@@ -137,12 +205,88 @@
   const elModalBack  = document.getElementById("modalBack");
   const elModalOk    = document.getElementById("modalOk");
 
-  function setLoading(on){ elLoading.style.display = on ? "block" : "none"; }
-  function setStatus(msg){ elStatus.textContent = msg || ""; }
+  /* ===============================
+     ★追加：申請/登録の時だけポップアップを出す
+     =============================== */
+  let useProcOverlay = false; // ←デフォルト false（アクセス直後は出さない）
+
+  const elProcOverlay = document.getElementById("procOverlay");
+  const elProcMsg     = document.getElementById("procMsg");
+  const elProcFill    = document.getElementById("procFill");
+  const elProcPct     = document.getElementById("procPct");
+
+  let procTimer = null;
+  let procP = 0;
+
+  function procShow_(msg){
+    elProcMsg.textContent = msg || "処理中…";
+    procP = 0;
+    elProcFill.style.width = "0%";
+    elProcPct.textContent = "0%";
+
+    elProcOverlay.style.display = "flex";
+    elProcOverlay.setAttribute("aria-hidden","false");
+
+    // スクロール止め（誤操作防止）
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    clearInterval(procTimer);
+    procTimer = setInterval(() => {
+      procP = Math.min(procP + (4 + Math.random()*10), 90);
+      const v = Math.floor(procP);
+      elProcFill.style.width = v + "%";
+      elProcPct.textContent = v + "%";
+    }, 350);
+  }
+
+  function procUpdate_(msg){
+    if (elProcOverlay.style.display !== "flex") return;
+    if (msg) elProcMsg.textContent = msg;
+  }
+
+  function procHide_(){
+    clearInterval(procTimer);
+    procTimer = null;
+
+    elProcFill.style.width = "100%";
+    elProcPct.textContent = "100%";
+
+    setTimeout(() => {
+      elProcOverlay.style.display = "none";
+      elProcOverlay.setAttribute("aria-hidden","true");
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    }, 150);
+  }
+
+  function setLoading(on){
+    // 既存の小さいくるくるは残す（見た目を変えたくないため）
+    elLoading.style.display = on ? "block" : "none";
+
+    // ★ここがポイント：useProcOverlay=true の時だけポップアップ
+    if(!useProcOverlay) return;
+
+    if(on){
+      procShow_(elStatus.textContent || "処理中…");
+    }else{
+      procHide_();
+    }
+  }
+
+  function setStatus(msg){
+    elStatus.textContent = msg || "";
+    // ★処理中はポップアップ側の文言も追従
+    if(inflight && useProcOverlay){
+      procUpdate_(elStatus.textContent || "処理中…");
+    }
+  }
+
   function setDebug(text){
     elDebug.textContent = text || "";
     elDebug.style.display = debugOn ? "block" : "none";
   }
+
   function esc(s){
     return String(s ?? "")
       .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
@@ -238,6 +382,8 @@ function renderRows(rows){
   async function loadAll(){
     if(inflight) return;
     inflight = true;
+
+    // ★アクセス直後の自動読み込みでは出さない（現状維持）
     setLoading(true);
     setStatus("読み込み中…");
 
@@ -306,6 +452,7 @@ function renderRows(rows){
         if (!staffCode || !/^\d+$/.test(staffCode)) return;
 
         inflight = true;
+        useProcOverlay = true;   // ★ここだけ：照合の時は出す
         setLoading(true);
         setStatus("照合中…");
 
@@ -333,6 +480,7 @@ function renderRows(rows){
           setDebug(String(e));
         }finally{
           setLoading(false);
+          useProcOverlay = false; // ★戻す
           inflight = false;
         }
       });
@@ -356,6 +504,7 @@ function renderRows(rows){
     if(!pendingStaffCode) return;
 
     inflight = true;
+    useProcOverlay = true;   // ★ここだけ：登録の時は出す
     setLoading(true);
     setStatus("登録中…");
 
@@ -376,6 +525,7 @@ function renderRows(rows){
       setDebug(String(e));
     }finally{
       setLoading(false);
+      useProcOverlay = false; // ★戻す
       inflight = false;
     }
   });
@@ -386,6 +536,7 @@ function renderRows(rows){
     if(inflight) return;
 
     inflight = true;
+    useProcOverlay = true;   // ★ここだけ：申請の時は出す
     setLoading(true);
     setStatus("申請中…");
 
@@ -399,6 +550,7 @@ function renderRows(rows){
       setDebug(String(e));
     }finally{
       setLoading(false);
+      useProcOverlay = false; // ★戻す
       inflight = false;
     }
   });
@@ -414,6 +566,8 @@ function renderRows(rows){
   });
 
   document.addEventListener("DOMContentLoaded", async () => {
+    // ★アクセス直後は出さない（デフォルトfalse）
+    useProcOverlay = false;
     await initLiff_();
     await loadAll();
   });
