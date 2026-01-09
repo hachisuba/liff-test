@@ -130,7 +130,7 @@
         <div class="regTitle">スタッフ登録が必要です</div>
         <div class="regRow">
           <input class="regInput" id="regStaffCode" placeholder="スタッフコード（半角数字）" inputmode="numeric" autocomplete="off" />
-          <button class="regBtn" id="regBtn" disabled>確認</button>
+          <button class="regBtn" id="regBtn" disabled>出勤</button>
         </div>
         <div class="regHint" id="regHint">※スタッフコード未登録時のみ入力が必要。</div>
       </div>
@@ -163,11 +163,11 @@
 
   <div class="modalBg" id="modalBg">
     <div class="modal">
-      <div class="modalTitle">確認</div>
+      <div class="modalTitle">出勤</div>
       <div class="modalText" id="modalText">-</div>
       <div class="modalBtns">
         <button class="mBtn mBack" id="modalBack">戻る</button>
-        <button class="mBtn mOk" id="modalOk">登録</button>
+        <button class="mBtn mOk" id="modalOk">出勤報告を送信</button>
       </div>
     </div>
   </div>
@@ -354,9 +354,9 @@ function renderRows(rows){
     if (confirmed) {
       btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
     } else if (isSelf) {
-      btnHtml = `<button class="btnSmall btnRed" data-action="apply">申請</button>`;
+      btnHtml = `<button class="btnSmall btnRed" data-action="apply">出勤</button>`;
     } else {
-      btnHtml = `<button class="btnSmall btnGray" disabled>未</button>`;
+      btnHtml = `<button class="btnSmall btnGray" disabled>未確認</button>`;
     }
 
     // ✅ 追加：スタッフコードを名前の上に表示（rowCodeがある時だけ）
@@ -538,15 +538,15 @@ function renderRows(rows){
     inflight = true;
     useProcOverlay = true;   // ★ここだけ：申請の時は出す
     setLoading(true);
-    setStatus("申請中…");
+    setStatus("送信中…");
 
     try{
       const res = await getApplyByJsonp_();
       if (!res || res.ok === false) throw new Error(res?.message || res?.error || "apply_ng");
       await loadAll();
-      setStatus("申請しました（完了）");
+      setStatus("出勤報告完了しました");
     }catch(e){
-      setStatus("申請失敗");
+      setStatus("出勤報告失敗");
       setDebug(String(e));
     }finally{
       setLoading(false);
