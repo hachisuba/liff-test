@@ -165,10 +165,11 @@
     <div class="modal">
       <div class="modalTitle">スタッフ照合結果</div>
       <div class="modalText" id="modalText">-</div>
-      <div class="modalBtns">
-        <button class="mBtn mBack" id="modalBack">違います！</button>
-        <button class="mBtn mOk" id="modalOk">　はい！　</button>
-      </div>
+<div class="modalBtns">
+  <button class="mBtn mBack" id="modalBack">違います！</button>
+  <button class="mBtn mOk" id="modalOk">　はい！　</button>
+  <button class="mBtn mBack" id="modalClose" style="display:none;">閉じる</button>
+</div>
     </div>
   </div>
 
@@ -204,6 +205,8 @@
   const elModalText  = document.getElementById("modalText");
   const elModalBack  = document.getElementById("modalBack");
   const elModalOk    = document.getElementById("modalOk");
+  const elModalClose = document.getElementById("modalClose");
+
 
   /* ===============================
      ★追加：申請/登録の時だけポップアップを出す
@@ -495,6 +498,7 @@ function renderRows(rows){
 
   elModalBack.addEventListener("click", () => {
     showModal_(false);
+    elModalClose.style.display = "none";
     pendingStaffCode = "";
     pendingStaffName = "";
   });
@@ -502,6 +506,19 @@ function renderRows(rows){
   elModalOk.addEventListener("click", async () => {
     if(inflight) return;
     if(!pendingStaffCode) return;
+
+   
+    let afterCloseReload = false; // ★追加：閉じた後に再読み込みするか
+
+elModalClose.addEventListener("click", async () => {
+  showModal_(false);
+  afterCloseReload = false;
+
+  // ★閉じるを押したら一覧を再読み込み
+  await refreshMeUi_();
+  await loadAll();
+});
+
 
     inflight = true;
     useProcOverlay = true;   // ★ここだけ：登録の時は出す
@@ -543,8 +560,24 @@ function renderRows(rows){
     try{
       const res = await getApplyByJsonp_();
       if (!res || res.ok === false) throw new Error(res?.message || res?.error || "apply_ng");
-      await loadAll();
-      setStatus("ＯＫ！本日もよろしくお願いします(^^)/");
+     
+await loadAll();
+
+// ★完了ポップアップ表示（OK/違います！は隠す、閉じるだけ出す）
+elModalText.textContent = "ＯＫ！本日もよろしくお願いします(^^)/";
+elModalOk.style.display = "none";
+elModalBack.style.display = "none";
+elModalClose.style.display = "inline-block";
+// ★照合用モーダルに戻す（ボタン表示を元に）
+elModalOk.style.display = "inline-block";
+elModalBack.style.display = "inline-block";
+elModalClose.style.display = "none";
+
+showModal_(true);
+
+// statusは空でもいい（残したいならそのままでもOK）
+setStatus("");
+      
     }catch(e){
       setStatus("出勤報告失敗。もう一度お試しください。");
       setDebug(String(e));
