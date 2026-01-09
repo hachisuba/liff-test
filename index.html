@@ -121,20 +121,18 @@
 
   <div class="wrap">
     <div class="card">
-      <h1>出勤一覧</h1>
+      <h1>本日の出勤一覧</h1>
 
       <div class="sub">ログイン中：<span id="loginName">-</span></div>
-      <div class="center"><span class="pill">表示日：<span id="viewDate">-</span></span></div>
+      <div class="center"><span class="pill">シフト一覧：<span id="viewDate">-</span>の出勤確定者</span></div>
 
       <div class="regBox" id="regBox">
         <div class="regTitle">★ 初回のみスタッフ照合が必要です ★</div>
         <div class="regRow">
-          <input class="regInput" id="regStaffCode" placeholder="スタッフコードを入力（半角数字）" inputmode="numeric" autocomplete="off" />
+          <input class="regInput" id="regStaffCode" placeholder="スタッフコード入力（半角数字）" inputmode="numeric" autocomplete="off" />
           <button class="regBtn" id="regBtn" disabled>照合</button>
         </div>
-        <div class="regHint" id="regHint">  
-          <p>※コードは下記一覧の名前の上に表示されていますが</p>
-　　　　   <p>自分のスタッフコードが違う場合は連絡ください。</p></div>
+        <div class="regHint" id="regHint">※コードは下記一覧の名前の上に表示されていますが<br>自分のスタッフコードが違う場合は連絡ください！</div>
       </div>
 
      <div class="btnrow">
