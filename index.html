@@ -130,7 +130,7 @@
         <div class="regTitle">★ 初回のみスタッフ照合が必要です ★</div>
         <div class="regRow">
           <input class="regInput" id="regStaffCode" placeholder="スタッフコード入力（半角数字）" inputmode="numeric" autocomplete="off" />
-          <button class="regBtn" id="regBtn">照合</button>
+          <button class="regBtn" id="regBtn" disabled>照合</button>
         </div>
         <div class="regHint" id="regHint">※コードは下記一覧の名前の上に表示されていますが<br>自分のスタッフコードが違う場合は連絡ください！</div>
       </div>
@@ -560,10 +560,13 @@ function renderRows(rows){
     await loadAll();
   });
 
-  document.getElementById("btnDebug").addEventListener("click", () => {
+const btnDebug = document.getElementById("btnDebug");
+if (btnDebug) {
+  btnDebug.addEventListener("click", () => {
     debugOn = !debugOn;
     elDebug.style.display = debugOn ? "block" : "none";
   });
+}
 
   document.addEventListener("DOMContentLoaded", async () => {
     // ★アクセス直後は出さない（デフォルトfalse）
