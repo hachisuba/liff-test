@@ -163,11 +163,11 @@
 
   <div class="modalBg" id="modalBg">
     <div class="modal">
-      <div class="modalTitle">出勤確認</div>
+      <div class="modalTitle">スタッフ照合結果</div>
       <div class="modalText" id="modalText">-</div>
       <div class="modalBtns">
-        <button class="mBtn mBack" id="modalBack">戻る</button>
-        <button class="mBtn mOk" id="modalOk">出勤報告を送信</button>
+        <button class="mBtn mBack" id="modalBack">違います！</button>
+        <button class="mBtn mOk" id="modalOk">　はい！　</button>
       </div>
     </div>
   </div>
@@ -354,7 +354,7 @@ function renderRows(rows){
     if (confirmed) {
       btnHtml = `<button class="btnSmall btnDone" disabled>完了</button>`;
     } else if (isSelf) {
-      btnHtml = `<button class="btnSmall btnRed" data-action="apply">出勤</button>`;
+      btnHtml = `<button class="btnSmall btnRed" data-action="apply">出勤確認</button>`;
     } else {
       btnHtml = `<button class="btnSmall btnGray" disabled>未確認</button>`;
     }
@@ -544,9 +544,9 @@ function renderRows(rows){
       const res = await getApplyByJsonp_();
       if (!res || res.ok === false) throw new Error(res?.message || res?.error || "apply_ng");
       await loadAll();
-      setStatus("出勤報告完了しました");
+      setStatus("ＯＫ！本日もよろしくお願いします(^^)/");
     }catch(e){
-      setStatus("出勤報告失敗");
+      setStatus("出勤報告失敗。もう一度お試しください。");
       setDebug(String(e));
     }finally{
       setLoading(false);
